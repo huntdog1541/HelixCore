@@ -73,10 +73,10 @@ export class BlinkEngine {
   /* ── Demo mode ───────────────────────────────────────────────────────── */
 
   async _demoExecute({ sourceCode = '', lang = 'c' }) {
-    await sleep(lang === 'c' ? 600 : 80);
+    await sleep(lang === 'c' ? 600 : lang === 'sh' ? 200 : 80);
     const t0 = Date.now();
 
-    const runners = { c: this._runC, asm: this._runAsm };
+    const runners = { c: this._runC, asm: this._runAsm, sh: this._runSh };
     const stdout  = (runners[lang] ?? this._runGeneric).call(this, sourceCode);
 
     stdout.split('\n').forEach(line => {
@@ -85,13 +85,32 @@ export class BlinkEngine {
 
     return {
       exitCode:   0,
-      runtime:    Date.now() - t0 + (lang === 'c' ? 800 : 20),
+      runtime:    Date.now() - t0 + (lang === 'c' ? 800 : lang === 'sh' ? 100 : 20),
       instrCount: Math.floor(Math.random() * 50000) + 5000,
       registers:  this._fakeRegisters(),
     };
   }
 
   _runC(code) {
+    // Detect fibonacci pattern — compute real values instead of placeholders
+    if (/fibonacci/.test(code) && /for\s*\(/.test(code)) {
+      const fib = n => n <= 1 ? n : fib(n - 1) + fib(n - 2);
+      const match = code.match(/i\s*<=\s*(\d+)/);
+      const max   = match ? parseInt(match[1], 10) : 10;
+      const rows  = Array.from({ length: max + 1 }, (_, i) =>
+        `  fib(${String(i).padStart(2)}) = ${fib(i)}`
+      );
+      return [
+        '[HelixCore] Blink x86-64 Emulator',
+        '',
+        'Fibonacci sequence:',
+        ...rows,
+        '',
+        '[HelixCore] Process complete. Exit 0.',
+        '',
+      ].join('\n');
+    }
+    // Generic: extract printf string literals
     const lines = [];
     const re = /printf\s*\(\s*"((?:[^"\\]|\\.)*?)"/g;
     let m;
@@ -109,8 +128,28 @@ export class BlinkEngine {
   }
 
   _runAsm(code) {
-    const m = /db\s+"([^"]+)"/g.exec(code);
-    return (m ? m[1] : 'Hello from HelixCore x86-64!') + '\n';
+    // AT&T syntax: .ascii "..." or .string "..."
+    const m = /\.(?:ascii|string)\s+"((?:[^"\\]|\\.)*)"/.exec(code);
+    if (m) return m[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+    // Intel syntax fallback: db "..."
+    const m2 = /db\s+"([^"]+)"/.exec(code);
+    return (m2 ? m2[1] : 'Hello from HelixCore x86-64!') + '\n';
+  }
+
+  _runSh(code) {
+    const out = [];
+    for (const raw of code.split('\n')) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const m = line.match(/^echo\s+"(.*?)"\s*$/);
+      if (m) {
+        out.push(
+          m[1].replace(/\$\(uname -a\)/g,
+            'Linux helixcore 4.5.0-blink-1.0 #1 SMP x86_64 GNU/Linux')
+        );
+      }
+    }
+    return out.length ? out.join('\n') + '\n' : '[HelixCore] Shell script exited.\n';
   }
 
   _runGeneric() { return '[HelixCore] Program exited with code 0\n'; }

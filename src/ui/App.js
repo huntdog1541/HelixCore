@@ -97,6 +97,7 @@ export class App {
     const cmdMap = {
       c:   `cosmocc -O2 ${file} -o program && blink ./program`,
       asm: `nasm -f elf64 ${file} && ld -o program program.o && blink ./program`,
+      sh:  `sh ./${file}`,
       elf: `blink ./${file}`,
     };
     this.terminal.cmd(cmdMap[lang] ?? `blink ./${file}`);

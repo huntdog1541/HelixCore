@@ -22,6 +22,7 @@ export class Sidebar extends EventEmitter {
       <select class="lang-select" id="lang-select">
         <option value="c">C (Cosmopolitan)</option>
         <option value="asm">x86-64 Assembly (GAS/AT&T)</option>
+        <option value="sh">Shell Script (sh)</option>
         <option value="elf">ELF Binary (upload)</option>
       </select>
 
@@ -66,14 +67,23 @@ export class Sidebar extends EventEmitter {
                 tree.querySelectorAll('.file-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 this._active = item.dataset.file;
+                this._autoSetLang(item.dataset.file);
                 this.emit('fileselect', { name: item.dataset.file });
             });
         });
     }
 
     getLang()    { return document.getElementById('lang-select')?.value ?? 'c'; }
+    setLang(lang) { const s = document.getElementById('lang-select'); if (s) s.value = lang; }
     enableRun()  { const b = document.getElementById('run-btn'); if (b) b.disabled = false; }
     disableRun() { const b = document.getElementById('run-btn'); if (b) b.disabled = true; }
+
+    _autoSetLang(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const map  = { c: 'c', cpp: 'c', h: 'c', asm: 'asm', s: 'asm', sh: 'sh', elf: 'elf', bin: 'elf' };
+        const lang = map[ext];
+        if (lang) this.setLang(lang);
+    }
 
     setDirty(name, dirty) {
         const dot = document.getElementById(`dirty-${name}`);
