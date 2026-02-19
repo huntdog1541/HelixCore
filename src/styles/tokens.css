@@ -1,0 +1,20 @@
+:root {
+    --bg-void:        #070a0d;
+    --bg-surface:     #0c1117;
+    --bg-panel:       #101820;
+    --bg-hover:       #182030;
+    --border:         #1c2d3f;
+    --border-bright:  #2a4560;
+    --phosphor:       #00ff88;
+    --phosphor-dim:   #00b860;
+    --phosphor-glow:  rgba(0,255,136,0.15);
+    --amber:          #ffb000;
+    --amber-dim:      #c08000;
+    --text-primary:   #c8e6c9;
+    --text-secondary: #5a8a6a;
+    --text-muted:     #2d4a38;
+    --red:            #ff4444;
+    --cyan:           #00d4ff;
+    --font-mono:      'IBM Plex Mono', 'Courier New', monospace;
+    --font-display:   'Orbitron', monospace;
+}

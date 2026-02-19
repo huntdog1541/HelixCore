@@ -86,7 +86,7 @@ export class BlinkEngine {
     let m;
     while ((m = re.exec(code)) !== null) {
       lines.push(m[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t')
-                     .replace(/\x1b\[[0-9;]*m/g, '').replace(/%[0-9.*]*[disxXfFeEgGcp]/g, '?'));
+          .replace(/\x1b\[[0-9;]*m/g, '').replace(/%[0-9.*]*[disxXfFeEgGcp]/g, '?'));
     }
     if (!lines.length) {
       return '[HelixCore Demo] C program executed.\nfib(10) = 55\n[HelixCore] Exit 0.\n';
