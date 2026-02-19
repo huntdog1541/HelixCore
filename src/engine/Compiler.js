@@ -56,9 +56,16 @@ export class Compiler {
     return this._buildElf(state);
   }
 
-  /** @returns {Promise<Uint8Array>} — Phase 3 */
+  /**
+   * Phase 3: C → ELF (future)
+   * This is currently a placeholder.  To enable real C compilation, a C compiler
+   * like Cosmopolitan's `cosmocc` or a port of TCC to WASM must be integrated here.
+   *
+   * @param {string} _source C source code
+   * @returns {Promise<Uint8Array>} ELF binary ready for execution
+   */
   async compileC(_source) {
-    throw new Error('C compiler not yet integrated — upload a pre-compiled ELF');
+    throw new Error('C compiler (Phase 3) not yet integrated.  To enable real C execution, provide a WASM-based C compiler (e.g., TCC or cosmocc) and wire it into Compiler.js.');
   }
 
   /* ── ELF builder ─────────────────────────────────────────────────────── */
