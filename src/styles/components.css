@@ -1,0 +1,20 @@
+/* Reusable component styles */
+.btn {
+  padding: 5px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.15s;
+  background: transparent;
+}
+
+.btn-primary  { color: var(--phosphor); border-color: var(--phosphor); }
+.btn-primary:hover { background: var(--phosphor); color: var(--bg-void); }
+.btn-run      { color: var(--amber); border-color: var(--amber); }
+.btn-run:hover { background: var(--amber); color: var(--bg-void); }
+.btn-secondary { color: var(--text-secondary); border-color: var(--border-bright); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
