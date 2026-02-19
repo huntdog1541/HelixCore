@@ -21,6 +21,51 @@ html, body {
   height: 100vh;
 }
 
+/* Panel grid-area placement */
+#titlebar      { grid-area: titlebar; }
+#sidebar       { grid-area: sidebar; }
+#editor-area   { grid-area: editor; }
+#terminal-area { grid-area: terminal; }
+#statusbar     { grid-area: statusbar; }
+
+/* Panel backgrounds and borders */
+#titlebar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#sidebar {
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 8px 0;
+}
+
+#terminal-area {
+  background: var(--bg-void);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#statusbar {
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 0;
+  overflow: hidden;
+}
+
 /* CodeMirror host fills the editor panel */
 #editor-area {
   display: flex;
