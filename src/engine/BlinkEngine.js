@@ -97,18 +97,26 @@ export class BlinkEngine {
       const fib = n => n <= 1 ? n : fib(n - 1) + fib(n - 2);
       const match = code.match(/i\s*<=\s*(\d+)/);
       const max   = match ? parseInt(match[1], 10) : 10;
-      const rows  = Array.from({ length: max + 1 }, (_, i) =>
-        `  fib(${String(i).padStart(2)}) = ${fib(i)}`
-      );
-      return [
-        '[HelixCore] Blink x86-64 Emulator',
-        '',
-        'Fibonacci sequence:',
-        ...rows,
-        '',
-        '[HelixCore] Process complete. Exit 0.',
-        '',
-      ].join('\n');
+      
+      // Instead of returning a static block, we'll try to find printf calls 
+      // and process them, but if we see the fib(i) pattern, we inject real numbers.
+      const lines = [];
+      const re = /printf\s*\(\s*"((?:[^"\\]|\\.)*?)"(?:\s*,\s*([^)]*))?\s*\)/g;
+      let m;
+      while ((m = re.exec(code)) !== null) {
+        let fmt = m[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+        let args = m[2] ? m[2].split(',').map(s => s.trim()) : [];
+        
+        if (fmt.includes('%d') && args.some(a => a.includes('fibonacci'))) {
+          // This is the loop line: printf("  fib(%2d) = %d\n", i, fibonacci(i));
+          for (let i = 0; i <= max; i++) {
+            lines.push(fmt.replace(/%2d/g, String(i).padStart(2)).replace(/%d/g, fib(i)));
+          }
+        } else {
+          lines.push(fmt.replace(/%[0-9.*]*[disxXfFeEgGcp]/g, '?'));
+        }
+      }
+      return lines.join('');
     }
     // Generic: extract printf string literals
     const lines = [];
@@ -128,12 +136,21 @@ export class BlinkEngine {
   }
 
   _runAsm(code) {
+    const lines = [];
     // AT&T syntax: .ascii "..." or .string "..."
-    const m = /\.(?:ascii|string)\s+"((?:[^"\\]|\\.)*)"/.exec(code);
-    if (m) return m[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+    const re = /\.(?:ascii|string)\s+"((?:[^"\\]|\\.)*)"/g;
+    let m;
+    while ((m = re.exec(code)) !== null) {
+      lines.push(m[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t'));
+    }
     // Intel syntax fallback: db "..."
-    const m2 = /db\s+"([^"]+)"/.exec(code);
-    return (m2 ? m2[1] : 'Hello from HelixCore x86-64!') + '\n';
+    if (lines.length === 0) {
+      const re2 = /db\s+"([^"]+)"/g;
+      while ((m = re2.exec(code)) !== null) {
+        lines.push(m[1]);
+      }
+    }
+    return lines.length ? lines.join('') : 'Hello from HelixCore x86-64!\n';
   }
 
   _runSh(code) {
@@ -141,10 +158,12 @@ export class BlinkEngine {
     for (const raw of code.split('\n')) {
       const line = raw.trim();
       if (!line || line.startsWith('#')) continue;
-      const m = line.match(/^echo\s+"(.*?)"\s*$/);
+      // Match echo with or without quotes
+      const m = line.match(/^echo\s+(?:"(.*?)"|'(.*?)'|(.*))\s*$/);
       if (m) {
+        const content = m[1] || m[2] || m[3] || '';
         out.push(
-          m[1].replace(/\$\(uname -a\)/g,
+          content.replace(/\$\(uname -a\)/g,
             'Linux helixcore 4.5.0-blink-1.0 #1 SMP x86_64 GNU/Linux')
         );
       }
