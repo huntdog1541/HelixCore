@@ -102,7 +102,16 @@ export class App {
     this.terminal.cmd(cmdMap[lang] ?? `blink ./${file}`);
 
     try {
-      const result = await this.engine.execute(null, { sourceCode: code, lang });
+      // In real mode, compile assembly to ELF before executing
+      let elfBytes = null;
+      if (!this.engine.demoMode && lang === 'asm') {
+        this.terminal.system('[HelixCore] Assembling...');
+        elfBytes = this.compiler.assembleGas(code);
+        const kb = (elfBytes.length / 1024).toFixed(1);
+        this.terminal.success(`[HelixCore] Assembled — ${kb} KB ELF`);
+      }
+
+      const result = await this.engine.execute(elfBytes, { sourceCode: code, lang });
       this.terminal.success('─────────────────────────────────────────');
       this.terminal.system(`[HelixCore] Exit: ${result.exitCode} | ${result.runtime}ms | ${result.instrCount.toLocaleString()} instructions`);
       this.terminal.updateProcessInfo(result);

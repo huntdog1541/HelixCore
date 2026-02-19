@@ -21,7 +21,7 @@ export class Sidebar extends EventEmitter {
       <div class="sidebar-section">Language</div>
       <select class="lang-select" id="lang-select">
         <option value="c">C (Cosmopolitan)</option>
-        <option value="asm">x86-64 Assembly (NASM)</option>
+        <option value="asm">x86-64 Assembly (GAS/AT&T)</option>
         <option value="elf">ELF Binary (upload)</option>
       </select>
 

@@ -23,6 +23,7 @@
     "@codemirror/state": "^6.0.0",
     "@codemirror/theme-one-dark": "^6.0.0",
     "@codemirror/view": "^6.0.0",
+    "@defasm/core": "^2.4.5",
     "codemirror": "^6.0.0"
   }
 }

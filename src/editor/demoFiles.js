@@ -20,23 +20,24 @@ int main(void) {
     return 0;
 }`,
 
-    'hello.asm': `; HelixCore OS — x86-64 Assembly
-; nasm -f elf64 hello.asm && ld -o hello hello.o && blink ./hello
+    'hello.asm': `# HelixCore OS — x86-64 Assembly (GAS/AT&T syntax)
+# Assembled in-browser via @defasm/core → ELF → Blink emulator
 
-section .data
-    msg db "Hello from HelixCore x86-64!", 10
-    len equ $ - msg
+.data
+msg:    .ascii "Hello from HelixCore x86-64!\\n"
+.equ    msglen, . - msg
 
-section .text
-global _start
+.text
+.global _start
 _start:
-    mov rax, 1
-    mov rdi, 1
-    mov rsi, msg
-    mov rdx, len
+    movq $1,         %rax       # sys_write
+    movq $1,         %rdi       # fd = stdout
+    leaq msg(%rip),  %rsi       # buf = &msg
+    movq $msglen,    %rdx       # count
     syscall
-    mov rax, 60
-    xor rdi, rdi
+
+    movq $60,        %rax       # sys_exit
+    xorq %rdi,       %rdi       # status = 0
     syscall`,
 
     'shell.sh': `#!/bin/sh
