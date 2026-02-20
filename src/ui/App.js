@@ -103,9 +103,9 @@ export class App {
     this.terminal.cmd(cmdMap[lang] ?? `ax ./${file}`);
 
     try {
-      // In real mode, compile assembly to ELF before executing
+      // Assemble assembly to ELF even in demo mode to catch syntax errors
       let elfBytes = null;
-      if (!this.engine.demoMode && lang === 'asm') {
+      if (lang === 'asm') {
         this.terminal.system('[HelixCore] Assembling...');
         elfBytes = this.compiler.assembleGas(code);
         const kb = (elfBytes.length / 1024).toFixed(1);

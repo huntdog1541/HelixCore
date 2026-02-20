@@ -127,12 +127,21 @@ export class BlinkEngine {
   }
 
   _runAsm(code) {
+    const lines = [];
     // AT&T syntax: .ascii "..." or .string "..."
-    const m = /\.(?:ascii|string)\s+"((?:[^"\\]|\\.)*)"/.exec(code);
-    if (m) return m[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+    const re = /\.(?:ascii|string)\s+"((?:[^"\\]|\\.)*)"/g;
+    let m;
+    while ((m = re.exec(code)) !== null) {
+      lines.push(m[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t'));
+    }
     // Intel syntax fallback: db "..."
-    const m2 = /db\s+"([^"]+)"/.exec(code);
-    return (m2 ? m2[1] : 'Hello from HelixCore x86-64!') + '\n';
+    if (lines.length === 0) {
+      const re2 = /db\s+"([^"]+)"/g;
+      while ((m = re2.exec(code)) !== null) {
+        lines.push(m[1]);
+      }
+    }
+    return lines.length ? lines.join('') : 'Hello from HelixCore x86-64!\n';
   }
 
   _runSh(code) {
@@ -140,8 +149,10 @@ export class BlinkEngine {
     for (const raw of code.split('\n')) {
       const line = raw.trim();
       if (!line || line.startsWith('#')) continue;
-      const m = line.match(/^echo\s+"(.*?)"\s*$/);
+      // Match echo with or without quotes
+      const m = line.match(/^echo\s+(?:"(.*?)"|'(.*?)'|(.*))\s*$/);
       if (m) {
+        const content = m[1] || m[2] || m[3] || '';
         out.push(
           m[1].replace(/\$\(uname -a\)/g,
             'Linux helixcore 4.5.0-ax-0.6 #1 SMP x86_64 GNU/Linux')
