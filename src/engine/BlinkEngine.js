@@ -1,30 +1,29 @@
 /**
- * BlinkEngine — Orchestrates code execution via blinkenlib.wasm
+ * BlinkEngine — Orchestrates code execution via ax-x86
  *
  * Two modes
  * ─────────
- *   Real mode  — BlinkRuntime loads blinkenlib.wasm and executes ELF binaries
- *                through the Blink x86-64 emulator.  Active when the WASM file
- *                is present and the runtime instantiates without error.
+ *   Real mode  — AxRuntime initialises ax-x86 (bundled WASM) and executes
+ *                ELF binaries through the ax x86-64 emulator.
  *
  *   Demo mode  — Falls back to a simple regex-based output simulator so the
- *                UI remains functional while the compiler toolchain (Phase 2/3)
- *                is not yet integrated.
+ *                UI remains functional when the emulator fails to initialise.
  *
  * Execution flow (real mode)
  * ──────────────────────────
- *   execute(elfBytes)  →  BlinkRuntime.run(elfBytes)
- *                         ├─ malloc + copy ELF into WASM heap
- *                         ├─ blinkenlib_start(ptr, len)
- *                         └─ blinkenlib_run_fast()  →  stdout/stderr callbacks
+ *   execute(elfBytes)  →  AxRuntime.run(elfBytes)
+ *                         ├─ Axecutor.from_binary(elfBytes)
+ *                         ├─ init_stack_program_start(...)
+ *                         ├─ hook_before_mnemonic(Syscall, handler)
+ *                         └─ ax.execute()  →  stdout/stderr callbacks
  */
 
-import { BlinkRuntime } from './BlinkRuntime.js';
+import { AxRuntime } from './AxRuntime.js';
 
 export class BlinkEngine {
   constructor() {
-    this._runtime  = new BlinkRuntime();
-    this.demoMode  = true;   // flipped to false when WASM loads successfully
+    this._runtime  = new AxRuntime();
+    this.demoMode  = true;   // flipped to false when ax initialises successfully
     this.ready     = false;
     this._onStdout = null;
     this._onStderr = null;
@@ -34,15 +33,15 @@ export class BlinkEngine {
   onStderr(cb) { this._onStderr = cb; this._runtime.onStderr = cb; }
 
   /**
-   * Load blinkenlib.wasm.  Falls back to demo mode on any failure.
-   * @returns {boolean} true if real WASM execution is available
+   * Initialise ax-x86.  Falls back to demo mode on any failure.
+   * @returns {boolean} true if real execution is available
    */
   async load() {
     try {
-      await this._runtime.load('/assets/blinkenlib.wasm');
+      const ver = await this._runtime.load();
       this.demoMode = false;
       this.ready    = true;
-      console.info('[BlinkEngine] blinkenlib.wasm loaded — real execution enabled');
+      console.info(`[BlinkEngine] ax-x86 ${ver} loaded — real execution enabled`);
       return true;
     } catch (err) {
       this.demoMode = true;
@@ -101,7 +100,7 @@ export class BlinkEngine {
         `  fib(${String(i).padStart(2)}) = ${fib(i)}`
       );
       return [
-        '[HelixCore] Blink x86-64 Emulator',
+        '[HelixCore] ax x86-64 Emulator',
         '',
         'Fibonacci sequence:',
         ...rows,
@@ -145,7 +144,7 @@ export class BlinkEngine {
       if (m) {
         out.push(
           m[1].replace(/\$\(uname -a\)/g,
-            'Linux helixcore 4.5.0-blink-1.0 #1 SMP x86_64 GNU/Linux')
+            'Linux helixcore 4.5.0-ax-0.6 #1 SMP x86_64 GNU/Linux')
         );
       }
     }

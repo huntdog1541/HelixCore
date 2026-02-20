@@ -12,7 +12,7 @@ export class StatusBar extends EventEmitter {
       <div class="status-item" id="sb-cursor">Ln 1, Col 1</div>
       <div class="status-bar-right">
         <div class="status-item" id="sb-exit"></div>
-        <div class="status-item">BLINK 1.1.0</div>
+        <div class="status-item">AX 0.6.0</div>
         <div class="status-item">x86-64-linux</div>
       </div>
     `;

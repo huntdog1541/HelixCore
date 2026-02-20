@@ -9,7 +9,7 @@ export default defineConfig({
         },
     },
     optimizeDeps: {
-        exclude: ['blinkenlib'],
+        exclude: ['ax-x86'],
     },
     build: {
         target: 'esnext',

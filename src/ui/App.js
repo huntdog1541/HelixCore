@@ -61,17 +61,17 @@ export class App {
 
   async _bootSequence() {
     this.titlebar.setEngineStatus('loading');
-    this.terminal.system('HelixCore OS v0.1.0 — Blink x86-64 Engine');
+    this.terminal.system('HelixCore OS v0.1.0 — ax x86-64 Engine');
     this.terminal.system('─────────────────────────────────────────');
 
     const wasmReady = await this.engine.load();
 
     if (wasmReady) {
-      this.terminal.success('[HelixCore] blinkenlib.wasm loaded — real execution enabled');
+      this.terminal.success('[HelixCore] ax-x86 loaded — real execution enabled');
       this.titlebar.setEngineStatus('ready');
-      this.statusbar.setMode('BLINK');
+      this.statusbar.setMode('AX');
     } else {
-      this.terminal.info('[HelixCore] Demo mode — add blinkenlib.wasm to /public/assets/ to enable real execution');
+      this.terminal.info('[HelixCore] Demo mode — ax-x86 failed to initialise');
       this.titlebar.setEngineStatus('demo');
       this.statusbar.setMode('DEMO');
     }
@@ -95,12 +95,12 @@ export class App {
     this.terminal.system(`[HelixCore] Executing: ${file}`);
 
     const cmdMap = {
-      c:   `cosmocc -O2 ${file} -o program && blink ./program`,
-      asm: `nasm -f elf64 ${file} && ld -o program program.o && blink ./program`,
+      c:   `cosmocc -O2 ${file} -o program && ax ./program`,
+      asm: `nasm -f elf64 ${file} && ld -o program program.o && ax ./program`,
       sh:  `sh ./${file}`,
-      elf: `blink ./${file}`,
+      elf: `ax ./${file}`,
     };
-    this.terminal.cmd(cmdMap[lang] ?? `blink ./${file}`);
+    this.terminal.cmd(cmdMap[lang] ?? `ax ./${file}`);
 
     try {
       // In real mode, compile assembly to ELF before executing
