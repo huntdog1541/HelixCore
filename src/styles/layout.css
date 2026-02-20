@@ -13,20 +13,39 @@ html, body {
 #app {
   display: grid;
   grid-template-rows: 38px 1fr 28px;
-  grid-template-columns: 220px 1fr 300px;
+  /* --sidebar-w and --terminal-w are set as inline styles by _wireResizers() */
+  grid-template-columns: var(--sidebar-w, 220px) 5px 1fr 5px var(--terminal-w, 300px);
   grid-template-areas:
-    "titlebar  titlebar  titlebar"
-    "sidebar   editor    terminal"
-    "statusbar statusbar statusbar";
+    "titlebar  titlebar  titlebar  titlebar   titlebar"
+    "sidebar   rsz-l     editor    rsz-r      terminal"
+    "statusbar statusbar statusbar statusbar  statusbar";
   height: 100vh;
 }
 
 /* Panel grid-area placement */
 #titlebar      { grid-area: titlebar; }
 #sidebar       { grid-area: sidebar; }
+#rsz-sidebar   { grid-area: rsz-l; }
 #editor-area   { grid-area: editor; }
+#rsz-terminal  { grid-area: rsz-r; }
 #terminal-area { grid-area: terminal; }
 #statusbar     { grid-area: statusbar; }
+
+/* Resize handles */
+.resize-handle-v {
+  position: relative;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.12s;
+  /* Widen the hit target by 4px on each side without affecting layout */
+  z-index: 10;
+}
+.resize-handle-v::before {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+.resize-handle-v:hover { background: var(--phosphor-dim); }
 
 /* Panel backgrounds and borders */
 #titlebar {
@@ -41,7 +60,6 @@ html, body {
 
 #sidebar {
   background: var(--bg-panel);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -50,7 +68,6 @@ html, body {
 
 #terminal-area {
   background: var(--bg-void);
-  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;

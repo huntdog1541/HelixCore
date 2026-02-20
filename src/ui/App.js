@@ -25,6 +25,7 @@ export class App {
     this._buildDOM();
     this._mountComponents();
     this._wireEvents();
+    this._wireResizers();
     await this._bootSequence();
   }
 
@@ -32,7 +33,9 @@ export class App {
     this.root.innerHTML = `
       <header id="titlebar"></header>
       <aside  id="sidebar"></aside>
+      <div    id="rsz-sidebar"  class="resize-handle-v"></div>
       <main   id="editor-area"></main>
+      <div    id="rsz-terminal" class="resize-handle-v"></div>
       <aside  id="terminal-area"></aside>
       <footer id="statusbar"></footer>
     `;
@@ -57,6 +60,46 @@ export class App {
 
     this.engine.onStdout(chunk => this.terminal.write(chunk, 'stdout'));
     this.engine.onStderr(chunk => this.terminal.error(chunk));
+  }
+
+  _wireResizers() {
+    const root = this.root;
+
+    // Initialise CSS variables so getPropertyValue works before first drag
+    root.style.setProperty('--sidebar-w',  '220px');
+    root.style.setProperty('--terminal-w', '300px');
+
+    const makeDragger = (handle, cssVar, dxSign, min, max) => {
+      handle.addEventListener('mousedown', e => {
+        const startX = e.clientX;
+        const startW = parseFloat(root.style.getPropertyValue(cssVar));
+
+        // Transparent overlay keeps the col-resize cursor while dragging
+        // over CodeMirror or any other element that would steal it
+        const shield = document.createElement('div');
+        shield.style.cssText = 'position:fixed;inset:0;cursor:col-resize;z-index:9999';
+        document.body.appendChild(shield);
+
+        const onMove = ev => {
+          const w = Math.max(min, Math.min(max, startW + (ev.clientX - startX) * dxSign));
+          root.style.setProperty(cssVar, `${w}px`);
+        };
+        const onUp = () => {
+          shield.remove();
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup',   onUp);
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup',   onUp);
+        e.preventDefault();
+      });
+    };
+
+    // Sidebar handle: drag right → sidebar grows  (dxSign = +1)
+    makeDragger(document.getElementById('rsz-sidebar'),  '--sidebar-w',  +1, 140, 520);
+    // Terminal handle: drag right → terminal shrinks (dxSign = −1)
+    makeDragger(document.getElementById('rsz-terminal'), '--terminal-w', -1, 150, 720);
   }
 
   async _bootSequence() {
