@@ -23,6 +23,7 @@ export class Chibicc {
     this.locals.clear();
     this.stackOffset = 0;
     this.labelId = 0;
+    this._sourceMap = []; // [{ asmLine: number, srcLine: number, srcCol: number }]
 
     let asm = '.data\n';
     // We'll collect string literals here
@@ -67,41 +68,54 @@ export class Chibicc {
       asm += `  subq $${stackSize}, %rsp\n`;
     }
 
+    const currentAsmLine = () => asm.split('\n').length;
+
     // Generate code for each statement
     for (const node of nodes) {
+      if (node.line) {
+        this._sourceMap.push({ asmLine: currentAsmLine(), srcLine: node.line, srcCol: node.col });
+      }
       asm += this._gen(node);
       // After each statement, we might have a value on the stack, pop it
-      if (node.type !== 'if' && node.type !== 'while' && node.type !== 'for' && node.type !== 'block') {
+      if (node.type !== 'if' && node.type !== 'while' && node.type !== 'for' && node.type !== 'block' && node.type !== 'return' && node.type !== 'nop') {
          asm += '  popq %rax\n';
       }
     }
 
     // Standard epilogue and exit syscall (since we don't have crt0)
+    asm += '.L.exit:\n';
     asm += '  movq %rbp, %rsp\n';
     asm += '  popq %rbp\n';
     asm += '  movq $60, %rax\n';
     asm += '  xorq %rdi, %rdi\n';
     asm += '  syscall\n';
 
-    // Replace string literals in the asm if needed
-    // (Actually the string literals were already handled in _tokenize/expr)
-    
-    return asm;
+    return { assembly: asm, sourceMap: this._sourceMap };
   }
 
   /* ── Tokenizer ────────────────────────────────────────────────────────── */
 
   _tokenize(source) {
-    // Strip #include lines
-    source = source.replace(/^\s*#include.*/gm, '');
     const tokens = [];
     const regex = /\s*(?:\/\/.*|\/\*[\s\S]*?\*\/|([a-zA-Z_]\w*)|(\d+)|(".*?")|(==|!=|<=|>=|&&|\|\||[{}()\[\],;=+\-*\/&!%<>\^|~.?:]))/g;
+    
     let m;
     while ((m = regex.exec(source)) !== null) {
-      if (m[1]) tokens.push({ type: 'ident', val: m[1] });
-      else if (m[2]) tokens.push({ type: 'num', val: parseInt(m[2]) });
-      else if (m[3]) tokens.push({ type: 'str', val: m[3] });
-      else if (m[4]) tokens.push({ type: 'punct', val: m[4] });
+      const fullMatch = m[0];
+      const leadingWhitespace = fullMatch.match(/^\s*/)[0];
+      const index = m.index + leadingWhitespace.length;
+      
+      const textBefore = source.substring(0, index);
+      const matches = textBefore.match(/\n/g);
+      const line = matches ? matches.length + 1 : 1;
+      const lastNL = textBefore.lastIndexOf('\n');
+      const col = lastNL === -1 ? index : index - lastNL - 1;
+
+      const tokenData = { line, col };
+      if (m[1]) tokens.push({ type: 'ident', val: m[1], ...tokenData });
+      else if (m[2]) tokens.push({ type: 'num', val: parseInt(m[2]), ...tokenData });
+      else if (m[3]) tokens.push({ type: 'str', val: m[3], ...tokenData });
+      else if (m[4]) tokens.push({ type: 'punct', val: m[4], ...tokenData });
     }
     return tokens;
   }
@@ -125,6 +139,7 @@ export class Chibicc {
   }
 
   _stmt() {
+    const startTok = this._peek();
     // Skip #include directives
     if (this._peek()?.val === '#') {
        while(!this._atEnd() && this._consume().val !== ';'); // Simple skip until ; or newline? 
@@ -146,7 +161,7 @@ export class Chibicc {
       const then = this._stmt();
       let els = null;
       if (this._match('else')) els = this._stmt();
-      return { type: 'if', cond, then, els };
+      return { type: 'if', cond, then, els, line: startTok.line, col: startTok.col };
     }
     
     if (this._match('while')) {
@@ -154,20 +169,21 @@ export class Chibicc {
       const cond = this._expr();
       this._expect(')');
       const body = this._stmt();
-      return { type: 'while', cond, body };
+      return { type: 'while', cond, body, line: startTok.line, col: startTok.col };
     }
 
     if (this._match('{')) {
       const stmts = [];
       while (!this._match('}')) stmts.push(this._stmt());
-      return { type: 'block', stmts };
+      return { type: 'block', stmts, line: startTok.line, col: startTok.col };
     }
 
     // Type declarations (minimal: int x = 5;)
     if (this._match('int')) {
       // Skip optional * for pointers (minimal support)
       while(this._match('*'));
-      const name = this._consume().val;
+      const nameTok = this._expect('ident');
+      const name = nameTok.val;
       if (!this.locals.has(name)) {
         this.stackOffset += 8;
         this.locals.set(name, -this.stackOffset);
@@ -175,16 +191,16 @@ export class Chibicc {
       if (this._match('=')) {
         const val = this._expr();
         this._expect(';');
-        return { type: 'assign', name, val };
+        return { type: 'assign', name, val, line: startTok.line, col: startTok.col };
       }
       this._expect(';');
-      return { type: 'nop' };
+      return { type: 'nop', line: startTok.line, col: startTok.col };
     }
 
     if (this._match('return')) {
       const val = this._expr();
       this._expect(';');
-      return { type: 'return', val };
+      return { type: 'return', val, line: startTok.line, col: startTok.col };
     }
 
     const e = this._expr();
@@ -195,10 +211,11 @@ export class Chibicc {
   _expr() { return this._assign(); }
 
   _assign() {
+    const startTok = this._peek();
     let node = this._equality();
     if (this._match('=')) {
       if (node.type !== 'var') throw new Error('Left side of assignment must be a variable');
-      node = { type: 'assign', name: node.name, val: this._assign() };
+      node = { type: 'assign', name: node.name, val: this._assign(), line: startTok.line, col: startTok.col };
     }
     return node;
   }
@@ -206,8 +223,8 @@ export class Chibicc {
   _equality() {
     let node = this._relational();
     for (;;) {
-      if (this._match('==')) node = { type: 'binary', op: '==', left: node, right: this._relational() };
-      else if (this._match('!=')) node = { type: 'binary', op: '!=', left: node, right: this._relational() };
+      if (this._match('==')) node = { type: 'binary', op: '==', left: node, right: this._relational(), line: node.line, col: node.col };
+      else if (this._match('!=')) node = { type: 'binary', op: '!=', left: node, right: this._relational(), line: node.line, col: node.col };
       else return node;
     }
   }
@@ -215,10 +232,10 @@ export class Chibicc {
   _relational() {
     let node = this._add();
     for (;;) {
-      if (this._match('<')) node = { type: 'binary', op: '<', left: node, right: this._add() };
-      else if (this._match('>')) node = { type: 'binary', op: '>', left: node, right: this._add() };
-      else if (this._match('<=')) node = { type: 'binary', op: '<=', left: node, right: this._add() };
-      else if (this._match('>=')) node = { type: 'binary', op: '>=', left: node, right: this._add() };
+      if (this._match('<')) node = { type: 'binary', op: '<', left: node, right: this._add(), line: node.line, col: node.col };
+      else if (this._match('>')) node = { type: 'binary', op: '>', left: node, right: this._add(), line: node.line, col: node.col };
+      else if (this._match('<=')) node = { type: 'binary', op: '<=', left: node, right: this._add(), line: node.line, col: node.col };
+      else if (this._match('>=')) node = { type: 'binary', op: '>=', left: node, right: this._add(), line: node.line, col: node.col };
       else return node;
     }
   }
@@ -226,8 +243,8 @@ export class Chibicc {
   _add() {
     let node = this._mul();
     for (;;) {
-      if (this._match('+')) node = { type: 'binary', op: '+', left: node, right: this._mul() };
-      else if (this._match('-')) node = { type: 'binary', op: '-', left: node, right: this._mul() };
+      if (this._match('+')) node = { type: 'binary', op: '+', left: node, right: this._mul(), line: node.line, col: node.col };
+      else if (this._match('-')) node = { type: 'binary', op: '-', left: node, right: this._mul(), line: node.line, col: node.col };
       else return node;
     }
   }
@@ -235,15 +252,16 @@ export class Chibicc {
   _mul() {
     let node = this._unary();
     for (;;) {
-      if (this._match('*')) node = { type: 'binary', op: '*', left: node, right: this._unary() };
-      else if (this._match('/')) node = { type: 'binary', op: '/', left: node, right: this._unary() };
+      if (this._match('*')) node = { type: 'binary', op: '*', left: node, right: this._unary(), line: node.line, col: node.col };
+      else if (this._match('/')) node = { type: 'binary', op: '/', left: node, right: this._unary(), line: node.line, col: node.col };
       else return node;
     }
   }
 
   _unary() {
+    const startTok = this._peek();
     if (this._match('+')) return this._primary();
-    if (this._match('-')) return { type: 'binary', op: '-', left: { type: 'num', val: 0 }, right: this._primary() };
+    if (this._match('-')) return { type: 'binary', op: '-', left: { type: 'num', val: 0, line: startTok.line, col: startTok.col }, right: this._primary(), line: startTok.line, col: startTok.col };
     return this._primary();
   }
 
@@ -254,8 +272,8 @@ export class Chibicc {
       this._expect(')');
       return node;
     }
-    if (t.type === 'num') return { type: 'num', val: t.val };
-    if (t.type === 'str') return { type: 'str', val: t.val };
+    if (t.type === 'num') return { type: 'num', val: t.val, line: t.line, col: t.col };
+    if (t.type === 'str') return { type: 'str', val: t.val, line: t.line, col: t.col };
     if (t.type === 'ident') {
       // Function call?
       if (this._match('(')) {
@@ -265,10 +283,10 @@ export class Chibicc {
           while (this._match(',')) args.push(this._expr());
           this._expect(')');
         }
-        return { type: 'call', name: t.val, args };
+        return { type: 'call', name: t.val, args, line: t.line, col: t.col };
       }
       // Variable
-      return { type: 'var', name: t.val };
+      return { type: 'var', name: t.val, line: t.line, col: t.col };
     }
     throw new Error(`Unexpected token: ${t.val}`);
   }
@@ -361,7 +379,7 @@ export class Chibicc {
       case 'block':
         for (const s of node.stmts) {
           asm += this._gen(s);
-          if (s.type !== 'if' && s.type !== 'while' && s.type !== 'for' && s.type !== 'block') {
+          if (s.type !== 'if' && s.type !== 'while' && s.type !== 'for' && s.type !== 'block' && s.type !== 'return' && s.type !== 'nop') {
             asm += '  popq %rax\n';
           }
         }
@@ -369,11 +387,7 @@ export class Chibicc {
       case 'return':
         asm += this._gen(node.val);
         asm += '  popq %rax\n';
-        asm += '  movq %rbp, %rsp\n';
-        asm += '  popq %rbp\n';
-        asm += '  movq $60, %rax\n';
-        asm += '  xorq %rdi, %rdi\n';
-        asm += '  syscall\n';
+        asm += '  jmp .L.exit\n';
         break;
       case 'nop':
         break;

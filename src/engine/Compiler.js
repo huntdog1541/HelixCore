@@ -54,21 +54,44 @@ export class Compiler {
       throw new Error(msg);
     }
 
-    return this._buildElf(state);
+    const elf = this._buildElf(state);
+    return { elf, state };
   }
 
   /**
    * Phase 3: C → ELF via chibicc (minimal JS implementation)
    *
    * @param {string} source C source code
-   * @returns {Promise<Uint8Array>} ELF binary ready for execution
+   * @returns {Promise<object>} { elf: Uint8Array, sourceMap: Array }
    */
   async compileC(source) {
     // Generate x86-64 assembly using chibicc
-    const assembly = this._chibicc.compile(source);
+    const { assembly, sourceMap: cSourceMap } = this._chibicc.compile(source);
     
     // Assemble the generated assembly into an ELF
-    return this.assembleGas(assembly);
+    const { elf, state } = this.assembleGas(assembly);
+
+    // Now we map the C source map (asm lines) to ELF virtual addresses
+    // state.statements is an array of all assembly statements
+    const finalSourceMap = [];
+    for (const entry of cSourceMap) {
+      // Find the statement at the corresponding asmLine
+      // entry.asmLine is a 1-based index in the assembly string
+      const stmt = state.statements[entry.asmLine - 1];
+      if (stmt) {
+        // Find virtual address of this statement
+        // textVA is BASE_VA + HEADER_SZ
+        const textVA = BASE_VA + BigInt(HEADER_SZ);
+        const va = textVA + BigInt(stmt.address);
+        finalSourceMap.push({
+          va: '0x' + va.toString(16).padStart(16, '0'),
+          line: entry.srcLine,
+          col: entry.srcCol
+        });
+      }
+    }
+    
+    return { elf, sourceMap: finalSourceMap };
   }
 
   /* ── ELF builder ─────────────────────────────────────────────────────── */

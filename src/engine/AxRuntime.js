@@ -58,9 +58,10 @@ export class AxRuntime {
   /**
    * Execute an ELF binary.
    * @param {Uint8Array} elfBytes
+   * @param {Array} sourceMap
    * @returns {{ exitCode: number, runtime: number, instrCount: number, registers: object }}
    */
-  async run(elfBytes) {
+  async run(elfBytes, sourceMap = []) {
     if (!this._initialized) throw new Error('AxRuntime not loaded — call load() first');
 
     const ax = Axecutor.from_binary(elfBytes);
@@ -324,8 +325,39 @@ export class AxRuntime {
 
     // Execute instructions one by one until the program stops
     // Note: while this is slower than ax.execute(), it allows us to count instructions in JS.
-    while (!(await ax.step())) {
-      instrCount++;
+    while (true) {
+      try {
+        if (await ax.step()) break;
+        instrCount++;
+      } catch (err) {
+        // Log the register state when an error occurs to help debug
+        const ripVal = r64(Register.RIP);
+        let debugMsg = `AX EXECUTION ERROR at RIP=${ripVal}: ${err.message}`;
+
+        // Use source map to find where in the original code the error occurred
+        if (sourceMap && sourceMap.length) {
+            // Find the closest VA that is <= ripVal
+            const ripNum = BigInt(ripVal);
+            let bestMatch = null;
+            for (const entry of sourceMap) {
+                const entryVA = BigInt(entry.va);
+                if (entryVA <= ripNum) {
+                    if (!bestMatch || entryVA > BigInt(bestMatch.va)) {
+                        bestMatch = entry;
+                    }
+                }
+            }
+
+            if (bestMatch) {
+                debugMsg += ` (at source line ${bestMatch.line}, col ${bestMatch.col})`;
+            }
+        }
+
+        console.error(debugMsg, err);
+        const enhancedErr = new Error(debugMsg);
+        enhancedErr.cause = err;
+        throw enhancedErr;
+      }
     }
 
     return {

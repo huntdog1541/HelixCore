@@ -154,14 +154,18 @@ export class App {
 
     try {
       let elfBytes = null;
+      let sourceMap = [];
       if (lang === 'asm') {
         this.terminal.system('[HelixCore] Assembling...');
-        elfBytes = this.compiler.assembleGas(code);
+        const result = this.compiler.assembleGas(code);
+        elfBytes = result.elf;
         const kb = (elfBytes.length / 1024).toFixed(1);
         this.terminal.success(`[HelixCore] Assembled — ${kb} KB ELF`);
       } else if (lang === 'c') {
         this.terminal.system('[HelixCore] Compiling C (Phase 3)...');
-        elfBytes = await this.compiler.compileC(code);
+        const result = await this.compiler.compileC(code);
+        elfBytes = result.elf;
+        sourceMap = result.sourceMap;
         const kb = (elfBytes.length / 1024).toFixed(1);
         this.terminal.success(`[HelixCore] Compiled — ${kb} KB ELF`);
       } else if (lang === 'elf') {
@@ -174,7 +178,7 @@ export class App {
 
       let result;
       if (elfBytes) {
-        result = await this.engine.run(elfBytes);
+        result = await this.engine.run(elfBytes, sourceMap);
       } else {
         throw new Error(`Real execution only supported for ASM/ELF. C/Shell require Phase 3/6.`);
       }
