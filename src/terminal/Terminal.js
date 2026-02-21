@@ -13,7 +13,7 @@ export class Terminal {
   mount() {
     this.container.innerHTML = `
       <div class="terminal-header">
-        <span>⬡ BLINK OUTPUT</span>
+        <span>⬡ ENGINE OUTPUT</span>
         <div class="terminal-controls">
           <button class="terminal-btn" id="term-clear" title="Clear">✕</button>
           <button class="terminal-btn" id="term-bottom" title="Scroll to bottom">↓</button>
@@ -70,7 +70,7 @@ export class Terminal {
   updateRegisters(regs) {
     const el = this.container.querySelector('#registers');
     if (!el) return;
-    const names = ['rax','rbx','rcx','rdx','rsp','rbp','rip'];
+    const names = ['rax','rbx','rcx','rdx','rsi','rdi','rsp','rbp','rip'];
     el.innerHTML = names.map(r => `
       <div class="reg-row">
         <span class="reg-name">${r.toUpperCase()}</span>

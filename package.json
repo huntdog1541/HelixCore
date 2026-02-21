@@ -1,7 +1,7 @@
 {
   "name": "helixcore",
   "version": "0.1.0",
-  "description": "Browser-based OS & code editor powered by Blink x86-64 emulator",
+  "description": "Browser-based OS & code editor powered by ax-x86 emulator",
   "type": "module",
   "scripts": {
     "dev": "vite",

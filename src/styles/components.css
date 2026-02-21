@@ -62,7 +62,7 @@
   padding: 0 16px;
   flex-shrink: 0;
 }
-.blink-status {
+.engine-status {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -202,9 +202,9 @@
 .term-cursor::after {
   content: '█';
   color: var(--phosphor);
-  animation: blink 1s step-end infinite;
+  animation: cursor-blink 1s step-end infinite;
 }
-@keyframes blink { 50% { opacity: 0; } }
+@keyframes cursor-blink { 50% { opacity: 0; } }
 
 #process-info {
   border-top: 1px solid var(--border);

@@ -16,7 +16,7 @@ export class Titlebar extends EventEmitter {
         <button class="nav-tab" data-tab="memory">Memory</button>
       </nav>
       <div class="header-controls">
-        <div class="blink-status">
+        <div class="engine-status">
           <div class="status-dot" id="engine-dot"></div>
           <span id="engine-label">LOADING</span>
         </div>

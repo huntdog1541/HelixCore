@@ -2,7 +2,7 @@
  * VirtualFS — In-browser virtual filesystem
  *
  * Hierarchical filesystem backed by IndexedDB.
- * Files are exposed to the Blink emulator via the WASM memory interface.
+ * Files are exposed to the emulator via the WASM memory interface.
  *
  * Default structure:
  *   /home/user/   ← user workspace
@@ -25,8 +25,8 @@ export class VirtualFS {
 
     _seedDefaults() {
         const set = (k, v) => this._mem.set(k, new TextEncoder().encode(v));
-        set('/proc/version',   'Linux 4.5 blink-1.0 x86_64 GNU/Linux\n');
-        set('/proc/cpuinfo',   'model name : Blink x86-64 Virtual CPU\n');
+        set('/proc/version',   'Linux 4.5 ax-0.6 x86_64 GNU/Linux\n');
+        set('/proc/cpuinfo',   'model name : x86-64 Virtual CPU\n');
         set('/etc/hostname',   'helixcore\n');
         set('/etc/os-release', 'NAME="HelixCore OS"\nVERSION="0.1"\n');
     }
@@ -52,6 +52,15 @@ export class VirtualFS {
         const val = await this._dbGet(path);
         if (val) { this._mem.set(path, val); return val; }
         return null;
+    }
+
+    async exists(path) {
+        return (await this.read(path)) !== null;
+    }
+
+    async getSize(path) {
+        const data = await this.read(path);
+        return data ? data.length : -1;
     }
 
     async list(dir = '/') {

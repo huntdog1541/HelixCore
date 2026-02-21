@@ -3,7 +3,7 @@
  * Instantiates and connects: BlinkEngine, VirtualFS, Editor, Terminal, UI components
  */
 
-import { BlinkEngine } from '../engine/BlinkEngine.js';
+import { AxRuntime }   from '../engine/AxRuntime.js';
 import { Compiler }    from '../engine/Compiler.js';
 import { VirtualFS }   from '../engine/VirtualFS.js';
 import { Editor }      from '../editor/Editor.js';
@@ -15,7 +15,7 @@ import { StatusBar }   from './StatusBar.js';
 export class App {
   constructor(rootEl) {
     this.root     = rootEl;
-    this.engine   = new BlinkEngine();
+    this.engine   = new AxRuntime();
     this.compiler = new Compiler();
     this.vfs      = new VirtualFS();
     this._running = false;
@@ -58,8 +58,8 @@ export class App {
     this.editor.on('cursor', ({ line, col }) => this.statusbar.setCursor(line, col));
     this.editor.on('dirty',  ({ name, dirty }) => this.sidebar.setDirty(name, dirty));
 
-    this.engine.onStdout(chunk => this.terminal.write(chunk, 'stdout'));
-    this.engine.onStderr(chunk => this.terminal.error(chunk));
+    this.engine.onStdout = chunk => this.terminal.write(chunk, 'stdout');
+    this.engine.onStderr = chunk => this.terminal.error(chunk);
   }
 
   _wireResizers() {
@@ -107,16 +107,23 @@ export class App {
     this.terminal.system('HelixCore OS v0.1.0 — ax x86-64 Engine');
     this.terminal.system('─────────────────────────────────────────');
 
-    const wasmReady = await this.engine.load();
+    let loaded = false;
+    try {
+      await this.engine.load();
+      loaded = true;
+    } catch (e) {
+      console.error(e);
+    }
 
-    if (wasmReady) {
+    if (loaded) {
+      this.engine.vfs = this.vfs; // Connect VFS to engine
       this.terminal.success('[HelixCore] ax-x86 loaded — real execution enabled');
       this.titlebar.setEngineStatus('ready');
       this.statusbar.setMode('AX');
     } else {
-      this.terminal.info('[HelixCore] Demo mode — ax-x86 failed to initialise');
-      this.titlebar.setEngineStatus('demo');
-      this.statusbar.setMode('DEMO');
+      this.terminal.error('[HelixCore] ax-x86 failed to initialise');
+      this.titlebar.setEngineStatus('error');
+      this.statusbar.setMode('ERR');
     }
 
     this.terminal.system('Press ▶ RUN or Ctrl+Enter to execute.');
@@ -146,16 +153,27 @@ export class App {
     this.terminal.cmd(cmdMap[lang] ?? `ax ./${file}`);
 
     try {
-      // Assemble assembly to ELF even in demo mode to catch syntax errors
       let elfBytes = null;
       if (lang === 'asm') {
         this.terminal.system('[HelixCore] Assembling...');
         elfBytes = this.compiler.assembleGas(code);
         const kb = (elfBytes.length / 1024).toFixed(1);
         this.terminal.success(`[HelixCore] Assembled — ${kb} KB ELF`);
+      } else if (lang === 'elf') {
+        elfBytes = await this.vfs.read(`/home/user/${file}`);
       }
 
-      const result = await this.engine.execute(elfBytes, { sourceCode: code, lang });
+      if (!elfBytes && (lang === 'asm' || lang === 'elf')) {
+        throw new Error(`No binary found for ${file}`);
+      }
+
+      let result;
+      if (elfBytes) {
+        result = await this.engine.run(elfBytes);
+      } else {
+        throw new Error(`Real execution only supported for ASM/ELF. C/Shell require Phase 3/6.`);
+      }
+
       this.terminal.success('─────────────────────────────────────────');
       this.terminal.system(`[HelixCore] Exit: ${result.exitCode} | ${result.runtime}ms | ${result.instrCount.toLocaleString()} instructions`);
       this.terminal.updateProcessInfo(result);
@@ -168,7 +186,7 @@ export class App {
 
     this._running = false;
     this.sidebar.enableRun();
-    this.titlebar.setEngineStatus(this.engine.demoMode ? 'demo' : 'ready');
+    this.titlebar.setEngineStatus('ready');
   }
 
   async _handleElfUpload(file) {
@@ -179,7 +197,7 @@ export class App {
     }
     const info = Compiler.parseElfHeader(bytes);
     this.terminal.success(`[HelixCore] ELF loaded: ${file.name} | ${info.arch} | ${info.type} | entry: ${info.entryPoint}`);
-    this.terminal.info('Press ▶ RUN to execute in Blink.');
+    this.terminal.info('Press ▶ RUN to execute.');
     await this.vfs.write(`/home/user/${file.name}`, bytes);
   }
 }

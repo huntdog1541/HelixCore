@@ -27,10 +27,16 @@ import initAx, { Axecutor, Mnemonic, Register, version as axVersion } from 'ax-x
 export class AxRuntime {
   constructor() {
     this._initialized = false;
+    /** @type {import('./VirtualFS.js').VirtualFS | null} */
+    this.vfs = null;
     /** @type {((text: string) => void) | null} */
     this.onStdout = null;
     /** @type {((text: string) => void) | null} */
     this.onStderr = null;
+
+    // File descriptor table: { fd: { path, offset } }
+    this._fds = new Map();
+    this._nextFd = 3;
   }
 
   /**
@@ -55,18 +61,54 @@ export class AxRuntime {
     const ax = Axecutor.from_binary(elfBytes);
 
     // Set up the System V ABI stack (argc/argv/envp)
+    // Most binaries expect at least some environment variables
     ax.init_stack_program_start(
-      8n * 1024n,        // 8 KB stack
+      128n * 1024n,      // Increased stack to 128 KB for safety
       ['/bin/program'],  // argv[0]
-      ['TERM=xterm-256color'],
+      ['TERM=xterm-256color', 'PATH=/usr/bin:/bin', 'HOME=/root'],
     );
 
     let exitCode = 0;
     const rt = this;
 
+    // Reset FD table for each run
+    this._fds.clear();
+    this._nextFd = 3;
+
     // Intercept every `syscall` instruction before it executes
-    ax.hook_before_mnemonic(Mnemonic.Syscall, (instance) => {
+    ax.hook_before_mnemonic(Mnemonic.Syscall, async (instance) => {
       const num = instance.reg_read_64(Register.RAX);
+
+      // ── read(fd, buf, len) ─────────────────────────────────────────────
+      if (num === 0n) {
+        const fd  = Number(instance.reg_read_64(Register.RDI));
+        const ptr = instance.reg_read_64(Register.RSI);
+        const len = Number(instance.reg_read_64(Register.RDX));
+
+        const file = rt._fds.get(fd);
+        if (!file || !rt.vfs) {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -9n)); // EBADF
+          return instance.commit();
+        }
+
+        const data = await rt.vfs.read(file.path);
+        if (!data) {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -5n)); // EIO
+          return instance.commit();
+        }
+
+        const remaining = data.length - file.offset;
+        const toRead = Math.min(len, remaining);
+
+        if (toRead > 0) {
+          const chunk = data.slice(file.offset, file.offset + toRead);
+          instance.mem_write_bytes(ptr, chunk);
+          file.offset += toRead;
+        }
+
+        instance.reg_write_64(Register.RAX, BigInt(toRead));
+        return instance.commit();
+      }
 
       // ── write(fd, buf, len) ────────────────────────────────────────────
       if (num === 1n) {
@@ -74,12 +116,119 @@ export class AxRuntime {
         const ptr = instance.reg_read_64(Register.RSI);
         const len = instance.reg_read_64(Register.RDX);
         const buf = instance.mem_read_bytes(ptr, len);
-        const text = new TextDecoder().decode(buf);
 
-        if      (fd === 1n) rt.onStdout?.(text);
-        else if (fd === 2n) rt.onStderr?.(text);
+        if (fd === 1n || fd === 2n) {
+          const text = new TextDecoder().decode(buf);
+          if (fd === 1n) rt.onStdout?.(text);
+          else rt.onStderr?.(text);
+          instance.reg_write_64(Register.RAX, len);
+        } else {
+          // Write to virtual file
+          const file = rt._fds.get(Number(fd));
+          if (!file || !rt.vfs) {
+            instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -9n)); // EBADF
+          } else {
+            // NOTE: Current VFS write overwrites. We'd need a more complex VFS for true append/offset write.
+            // For now, let's just implement it as a simple "overwrite with this data" or ignore.
+            // A better VFS would handle growing buffers.
+            instance.reg_write_64(Register.RAX, len); 
+          }
+        }
+        return instance.commit();
+      }
 
-        instance.reg_write_64(Register.RAX, len);   // return bytes written
+      // ── open(pathname, flags, mode) ────────────────────────────────────
+      if (num === 2n) {
+        const pathPtr = instance.reg_read_64(Register.RDI);
+        // Read null-terminated string
+        let path = '';
+        let curr = pathPtr;
+        while (true) {
+          const b = instance.mem_read_bytes(curr++, 1n)[0];
+          if (b === 0) break;
+          path += String.fromCharCode(b);
+        }
+
+        if (!rt.vfs) {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -5n)); // EIO
+          return instance.commit();
+        }
+
+        const data = await rt.vfs.read(path);
+        if (data === null) {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -2n)); // ENOENT
+          return instance.commit();
+        }
+
+        const fd = rt._nextFd++;
+        rt._fds.set(fd, { path, offset: 0 });
+        instance.reg_write_64(Register.RAX, BigInt(fd));
+        return instance.commit();
+      }
+
+      // ── close(fd) ──────────────────────────────────────────────────────
+      if (num === 3n) {
+        const fd = Number(instance.reg_read_64(Register.RDI));
+        if (rt._fds.has(fd)) {
+          rt._fds.delete(fd);
+          instance.reg_write_64(Register.RAX, 0n);
+        } else {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -9n)); // EBADF
+        }
+        return instance.commit();
+      }
+
+      // ── stat(pathname, statbuf) ────────────────────────────────────────
+      if (num === 4n) {
+        const pathPtr = instance.reg_read_64(Register.RDI);
+        const statPtr = instance.reg_read_64(Register.RSI);
+        
+        let path = '';
+        let curr = pathPtr;
+        while (true) {
+          const b = instance.mem_read_bytes(curr++, 1n)[0];
+          if (b === 0) break;
+          path += String.fromCharCode(b);
+        }
+
+        if (!rt.vfs) {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -5n)); // EIO
+          return instance.commit();
+        }
+
+        const size = await rt.vfs.getSize(path);
+        if (size === -1) {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -2n)); // ENOENT
+          return instance.commit();
+        }
+
+        // Fill a minimal struct stat (x86-64)
+        // Offset 48: st_size (8 bytes)
+        // Offset 24: st_nlink (8 bytes)
+        // Offset 0: st_dev (8 bytes)
+        // Offset 8: st_ino (8 bytes)
+        // Offset 16: st_mode (4 bytes)
+        instance.mem_write_64(statPtr + 48n, BigInt(size));
+        instance.mem_write_32(statPtr + 16n, 0x81edn); // -rw-r--r-- regular file
+        instance.reg_write_64(Register.RAX, 0n);
+        return instance.commit();
+      }
+
+      // ── fstat(fd, statbuf) ─────────────────────────────────────────────
+      if (num === 5n) {
+        const fd      = Number(instance.reg_read_64(Register.RDI));
+        const statPtr = instance.reg_read_64(Register.RSI);
+
+        const file = rt._fds.get(fd);
+        if (!file || !rt.vfs) {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -9n)); // EBADF
+          return instance.commit();
+        }
+
+        const size = await rt.vfs.getSize(file.path);
+        instance.mem_write_64(statPtr + 48n, BigInt(size));
+        instance.mem_write_32(statPtr + 16n, 0x81edn); 
+        instance.reg_write_64(Register.RAX, 0n);
         return instance.commit();
       }
 
@@ -94,10 +243,10 @@ export class AxRuntime {
       return instance.commit();
     });
 
+    let instrCount = 0;
     const t0 = performance.now();
-    await ax.execute();
-
-    // Read final register state (best-effort; ax may have stopped mid-run)
+    
+    // Read register helper (best-effort; ax may have stopped mid-run)
     const r64 = (reg) => {
       try {
         const v = ax.reg_read_64(reg);
@@ -107,15 +256,23 @@ export class AxRuntime {
       }
     };
 
+    // Execute instructions one by one until the program stops
+    // Note: while this is slower than ax.execute(), it allows us to count instructions in JS.
+    while (!(await ax.step())) {
+      instrCount++;
+    }
+
     return {
       exitCode,
       runtime:    Math.round(performance.now() - t0),
-      instrCount: 0,   // ax doesn't expose an instruction counter
+      instrCount,
       registers: {
         rax: r64(Register.RAX),
         rbx: r64(Register.RBX),
         rcx: r64(Register.RCX),
         rdx: r64(Register.RDX),
+        rsi: r64(Register.RSI),
+        rdi: r64(Register.RDI),
         rsp: r64(Register.RSP),
         rbp: r64(Register.RBP),
         rip: r64(Register.RIP),
