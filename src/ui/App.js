@@ -159,6 +159,11 @@ export class App {
         elfBytes = this.compiler.assembleGas(code);
         const kb = (elfBytes.length / 1024).toFixed(1);
         this.terminal.success(`[HelixCore] Assembled — ${kb} KB ELF`);
+      } else if (lang === 'c') {
+        this.terminal.system('[HelixCore] Compiling C (Phase 3)...');
+        elfBytes = await this.compiler.compileC(code);
+        const kb = (elfBytes.length / 1024).toFixed(1);
+        this.terminal.success(`[HelixCore] Compiled — ${kb} KB ELF`);
       } else if (lang === 'elf') {
         elfBytes = await this.vfs.read(`/home/user/${file}`);
       }

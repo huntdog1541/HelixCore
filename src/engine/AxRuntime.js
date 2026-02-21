@@ -37,6 +37,11 @@ export class AxRuntime {
     // File descriptor table: { fd: { path, offset } }
     this._fds = new Map();
     this._nextFd = 3;
+
+    // Heap management (brk)
+    this._heapStart = 0x800000n; // Initial heap start
+    this._brk       = 0x800000n; // Current program break
+    this._heapMapped = false;
   }
 
   /**
@@ -71,9 +76,11 @@ export class AxRuntime {
     let exitCode = 0;
     const rt = this;
 
-    // Reset FD table for each run
+    // Reset FD table and heap for each run
     this._fds.clear();
     this._nextFd = 3;
+    this._brk = this._heapStart;
+    this._heapMapped = false;
 
     // Intercept every `syscall` instruction before it executes
     ax.hook_before_mnemonic(Mnemonic.Syscall, async (instance) => {
@@ -229,6 +236,65 @@ export class AxRuntime {
         instance.mem_write_64(statPtr + 48n, BigInt(size));
         instance.mem_write_32(statPtr + 16n, 0x81edn); 
         instance.reg_write_64(Register.RAX, 0n);
+        return instance.commit();
+      }
+
+      // ── brk(addr) ──────────────────────────────────────────────────────
+      if (num === 12n) {
+        const addr = instance.reg_read_64(Register.RDI);
+        
+        if (addr === 0n) {
+          // If 0, return current break
+          instance.reg_write_64(Register.RAX, rt._brk);
+          return instance.commit();
+        }
+
+        // Simplistic heap expansion: we just allow it up to a limit (16 MB)
+        const limit = rt._heapStart + (16n * 1024n * 1024n);
+        if (addr >= rt._heapStart && addr < limit) {
+          if (!rt._heapMapped) {
+            // Lazy-init the first page if needed
+            instance.mem_init_zero_named(rt._heapStart, 4096n, 'heap');
+            rt._heapMapped = true;
+          }
+          
+          // If we need to resize the section (ax-x86 supports resizing sections)
+          if (addr > rt._brk) {
+            const currentSize = rt._brk - rt._heapStart;
+            const newSize     = addr - rt._heapStart;
+            // Pad to 4KB page
+            const paddedSize = (newSize + 4095n) & ~4095n;
+            if (paddedSize > currentSize) {
+              instance.mem_resize_section(rt._heapStart, paddedSize);
+            }
+          }
+
+          rt._brk = addr;
+          instance.reg_write_64(Register.RAX, rt._brk);
+        } else {
+          // Error or return current break
+          instance.reg_write_64(Register.RAX, rt._brk);
+        }
+        return instance.commit();
+      }
+
+      // ── mmap(addr, len, prot, flags, fd, offset) ───────────────────────
+      if (num === 9n) {
+        const addr  = instance.reg_read_64(Register.RDI);
+        const len   = instance.reg_read_64(Register.RSI);
+        const prot  = Number(instance.reg_read_64(Register.RDX));
+        const flags = Number(instance.reg_read_64(Register.R10));
+        const fd    = Number(instance.reg_read_64(Register.R8));
+
+        // Simplistic: only support anonymous mapping for now (MAP_ANONYMOUS = 0x20)
+        const MAP_ANON = 0x20;
+        if (flags & MAP_ANON) {
+          const v = instance.mem_init_zero_anywhere(len);
+          instance.mem_prot(v, prot);
+          instance.reg_write_64(Register.RAX, v);
+        } else {
+          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -22n)); // EINVAL
+        }
         return instance.commit();
       }
 
