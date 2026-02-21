@@ -44,6 +44,8 @@ export class Chibicc {
         asm += `${label}: .ascii "${content}\\0"\n`;
       }
     }
+    // Store for use by _getStrLabel() during code generation
+    this._stringMap = stringMap;
 
     asm += '.text\n.global _start\n_start:\n';
     
@@ -89,6 +91,9 @@ export class Chibicc {
     asm += '  movq $60, %rax\n';
     asm += '  xorq %rdi, %rdi\n';
     asm += '  syscall\n';
+
+    // Append the __printf helper (used by any printf call in user code)
+    asm += this._printfStub();
 
     return { assembly: asm, sourceMap: this._sourceMap };
   }
@@ -300,9 +305,7 @@ export class Chibicc {
         asm += `  pushq $${node.val}\n`;
         break;
       case 'str':
-        // Find label for this string literal
-        // We'll reuse the logic from the stringMap
-        asm += `  leaq .L.str.${this._getStrId(node.val)}(%rip), %rax\n`;
+        asm += `  leaq ${this._getStrLabel(node.val)}(%rip), %rax\n`;
         asm += '  pushq %rax\n';
         break;
       case 'var':
@@ -345,9 +348,8 @@ export class Chibicc {
         }
         // Handle printf specially if it's the only one
         if (node.name === 'printf') {
-           // For printf, we need to set %rax to 0 for variadic (number of XMM regs)
            asm += '  xorq %rax, %rax\n';
-           asm += '  call printf\n';
+           asm += '  call __printf\n';
         } else {
            asm += `  call ${node.name}\n`;
         }
@@ -395,21 +397,86 @@ export class Chibicc {
     return asm;
   }
 
-  // Helper to find string ID
-  _getStrId(val) {
-    if (!this._stringCache) {
-      this._stringCache = new Map();
-      let id = 0;
-      const regex = /"([^"\\]*(?:\\.[^"\\]*)*)"/g;
-      // This is a bit redundant but easy
-      // I should have built this during the first pass
-    }
-    // Re-scanning is not ideal but okay for now
-    // Let's just use a simple counter based on the current run
-    if (!this._strMap) this._strMap = new Map();
-    if (this._strMap.has(val)) return this._strMap.get(val);
-    const id = this._strMap.size;
-    this._strMap.set(val, id);
-    return id;
+  // Return the .data label for a quoted string literal (e.g. '"Hello\n"' → '.L.str.0')
+  // Uses the same stringMap built during compile() so IDs are always consistent.
+  _getStrLabel(val) {
+    return this._stringMap?.get(val) ?? '.L.str.0';
+  }
+
+  // Emit a minimal __printf subroutine that implements printf via write syscalls.
+  // Supports: literal characters and the %d conversion specifier.
+  // Calling convention: %rdi = fmt (null-terminated), %rsi = first integer arg.
+  _printfStub() {
+    return `
+__printf:
+  pushq %rbp
+  movq  %rsp, %rbp
+  pushq %rbx
+  pushq %r12
+  pushq %r13
+  subq  $32, %rsp
+  movq  %rdi, %r12
+  movq  %rsi, %r13
+.L.pf_loop:
+  movzbq (%r12), %rbx
+  testq  %rbx, %rbx
+  jz     .L.pf_done
+  cmpq   $37, %rbx
+  je     .L.pf_spec
+  movq   $1,   %rax
+  movq   $1,   %rdi
+  movq   %r12, %rsi
+  movq   $1,   %rdx
+  syscall
+  incq   %r12
+  jmp    .L.pf_loop
+.L.pf_spec:
+  incq   %r12
+  movzbq (%r12), %rbx
+  incq   %r12
+  cmpq   $100, %rbx
+  jne    .L.pf_loop
+  movq   %r13, %rax
+  testq  %rax, %rax
+  jns    .L.pf_pos
+  subq   $8,  %rsp
+  movb   $45, (%rsp)
+  movq   $1,  %rax
+  movq   $1,  %rdi
+  movq   %rsp, %rsi
+  movq   $1,  %rdx
+  syscall
+  addq   $8,  %rsp
+  movq   %r13, %rax
+  negq   %rax
+.L.pf_pos:
+  leaq   -25(%rbp), %rcx
+.L.pf_dloop:
+  xorq   %rdx, %rdx
+  movq   $10,  %rbx
+  divq   %rbx
+  addq   $48,  %rdx
+  movb   %dl,  (%rcx)
+  decq   %rcx
+  testq  %rax, %rax
+  jnz    .L.pf_dloop
+  incq   %rcx
+  leaq   -24(%rbp), %rdx
+  subq   %rcx, %rdx
+  movq   $1,   %rax
+  movq   $1,   %rdi
+  movq   %rcx, %rsi
+  syscall
+  jmp    .L.pf_loop
+.L.pf_done:
+  addq   $32, %rsp
+  popq   %r13
+  popq   %r12
+  popq   %rbx
+  movq   %rbp, %rsp
+  popq   %rbp
+  xorq   %rax, %rax
+  ret
+`;
   }
 }
