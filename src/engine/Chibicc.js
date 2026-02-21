@@ -95,7 +95,7 @@ export class Chibicc {
     // Strip #include lines
     source = source.replace(/^\s*#include.*/gm, '');
     const tokens = [];
-    const regex = /\s*(?:\/\/.*|\/\*[\s\S]*?\*\/|([a-zA-Z_]\w*)|(\d+)|(".*?")|(==|!=|<=|>=|&&|\|\||[{}()\[\],;=+\-*\/&]))/g;
+    const regex = /\s*(?:\/\/.*|\/\*[\s\S]*?\*\/|([a-zA-Z_]\w*)|(\d+)|(".*?")|(==|!=|<=|>=|&&|\|\||[{}()\[\],;=+\-*\/&!%<>\^|~.?:]))/g;
     let m;
     while ((m = regex.exec(source)) !== null) {
       if (m[1]) tokens.push({ type: 'ident', val: m[1] });
