@@ -17,6 +17,7 @@
  */
 
 import { AssemblyState } from '@defasm/core';
+import { Chibicc }      from './Chibicc.js';
 
 const BASE_VA   = 0x400000n;
 const ELF_HSIZ  = 64;
@@ -25,7 +26,7 @@ const HEADER_SZ = ELF_HSIZ + PHDR_SIZ; // 120 = 0x78
 
 export class Compiler {
   constructor() {
-    this._cosmo = null; // Phase 3: cosmocc / TCC
+    this._chibicc = new Chibicc();
   }
 
   /* ── Public API ──────────────────────────────────────────────────────── */
@@ -57,38 +58,17 @@ export class Compiler {
   }
 
   /**
-   * Phase 3: C → ELF (future)
-   * This is currently a placeholder.  To enable real C compilation, a C compiler
-   * like Cosmopolitan's `cosmocc` or a port of TCC to WASM must be integrated here.
+   * Phase 3: C → ELF via chibicc (minimal JS implementation)
    *
-   * @param {string} _source C source code
+   * @param {string} source C source code
    * @returns {Promise<Uint8Array>} ELF binary ready for execution
    */
   async compileC(source) {
-    // Phase 3: Real C Compilation
-    // For now, we use a simple regex-based 'compiler' that can handle 
-    // extremely basic C programs by translating them to assembly.
-    // This allows us to test the C workflow while the real WASM compiler is being integrated.
+    // Generate x86-64 assembly using chibicc
+    const assembly = this._chibicc.compile(source);
     
-    if (source.includes('printf("Hello, World!\\n");')) {
-      return this.assembleGas(`
-        .data
-        msg: .ascii "Hello, World!\\n"
-        .text
-        .global _start
-        _start:
-          movq $1, %rax
-          movq $1, %rdi
-          leaq msg(%rip), %rsi
-          movq $14, %rdx
-          syscall
-          movq $60, %rax
-          xorq %rdi, %rdi
-          syscall
-      `);
-    }
-
-    throw new Error('C compiler (Phase 3) integration in progress. Only simple Hello World is currently supported via internal translator.');
+    // Assemble the generated assembly into an ELF
+    return this.assembleGas(assembly);
   }
 
   /* ── ELF builder ─────────────────────────────────────────────────────── */

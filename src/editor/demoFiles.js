@@ -1,22 +1,30 @@
 /** Built-in demo programs shown on first load */
 export const DEMO_FILES = {
-    'main.c': `// HelixCore OS — Hello World in C
-// Compiled via Cosmopolitan cosmocc -> x86-64 ELF -> run in ax
+    'main.c': `// HelixCore OS — C via chibicc (minimal)
+// Compiled via chibicc-js -> x86-64 assembly -> ELF
 
-#include <stdio.h>
-
-int fibonacci(int n) {
-    if (n <= 1) return n;
-    return fibonacci(n - 1) + fibonacci(n - 2);
-}
-
-int main(void) {
-    printf("[HelixCore] ax x86-64 Emulator\\n\\n");
-    printf("Fibonacci sequence:\\n");
-    for (int i = 0; i <= 10; i++) {
-        printf("  fib(%2d) = %d\\n", i, fibonacci(i));
+int main() {
+    printf("[HelixCore] Starting chibicc computation...\\n");
+    
+    int a = 10;
+    int b = 20;
+    int c = a + b * 2;
+    
+    printf("Result of a + b * 2 = %d\\n", c);
+    
+    if (c > 40) {
+        printf("Condition (c > 40) is true!\\n");
+    } else {
+        printf("Condition (c > 40) is false!\\n");
     }
-    printf("\\n[HelixCore] Process complete. Exit 0.\\n");
+    
+    int i = 0;
+    while (i < 5) {
+        printf("Loop iteration: %d\\n", i);
+        i = i + 1;
+    }
+    
+    printf("[HelixCore] Process complete.\\n");
     return 0;
 }`,
 
