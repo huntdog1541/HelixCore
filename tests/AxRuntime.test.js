@@ -125,4 +125,21 @@ describe('AxRuntime', () => {
     syscallHook(mockAx);
     await runPromise;
   });
+
+  it('should continue stepping while step() returns true and stop on false', async () => {
+    await runtime.load();
+    const mockAx = new MockAxecutor();
+    vi.mocked(MockAxecutor.from_binary).mockReturnValue(mockAx);
+
+    let stepCalls = 0;
+    mockAx.step.mockImplementation(async () => {
+      stepCalls += 1;
+      return stepCalls < 3; // true, true, false => stop after 3 steps
+    });
+
+    const result = await runtime.run(new Uint8Array([1, 2, 3]));
+
+    expect(stepCalls).toBe(3);
+    expect(result.instrCount).toBe(3);
+  });
 });

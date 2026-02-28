@@ -48,6 +48,13 @@ export class VirtualFS {
         await this._dbPut(path, bytes);
     }
 
+    writeSync(path, data) {
+        const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+        this._mem.set(path, bytes);
+        this._queuePut(path, bytes);
+        return bytes;
+    }
+
     async writeAt(path, data, offset = 0) {
         const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
         const base = await this.read(path) ?? new Uint8Array(0);
@@ -61,6 +68,19 @@ export class VirtualFS {
         return bytes.length;
     }
 
+    writeAtSync(path, data, offset = 0) {
+        const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+        const base = this.readSync(path) ?? new Uint8Array(0);
+        const start = Math.max(0, Number(offset) || 0);
+        const outLen = Math.max(base.length, start + bytes.length);
+        const out = new Uint8Array(outLen);
+        out.set(base);
+        out.set(bytes, start);
+        this._mem.set(path, out);
+        this._queuePut(path, out);
+        return bytes.length;
+    }
+
     async truncate(path, size = 0) {
         const current = await this.read(path) ?? new Uint8Array(0);
         const nextSize = Math.max(0, Number(size) || 0);
@@ -70,10 +90,24 @@ export class VirtualFS {
         await this._dbPut(path, out);
     }
 
+    truncateSync(path, size = 0) {
+        const current = this.readSync(path) ?? new Uint8Array(0);
+        const nextSize = Math.max(0, Number(size) || 0);
+        const out = new Uint8Array(nextSize);
+        out.set(current.slice(0, nextSize));
+        this._mem.set(path, out);
+        this._queuePut(path, out);
+    }
+
     async read(path) {
         if (this._mem.has(path)) return this._mem.get(path);
         const val = await this._dbGet(path);
         if (val) { this._mem.set(path, val); return val; }
+        return null;
+    }
+
+    readSync(path) {
+        if (this._mem.has(path)) return this._mem.get(path);
         return null;
     }
 
@@ -83,6 +117,11 @@ export class VirtualFS {
 
     async getSize(path) {
         const data = await this.read(path);
+        return data ? data.length : -1;
+    }
+
+    getSizeSync(path) {
+        const data = this.readSync(path);
         return data ? data.length : -1;
     }
 
@@ -117,6 +156,11 @@ export class VirtualFS {
     async delete(path) {
         this._mem.delete(path);
         await this._dbDelete(path);
+    }
+
+    deleteSync(path) {
+        this._mem.delete(path);
+        this._queueDelete(path);
     }
 
     async _hydrateFromDb() {
@@ -154,6 +198,14 @@ export class VirtualFS {
     }
 
     _tx(mode) { return this._db.transaction(STORE, mode).objectStore(STORE); }
+    _queuePut(k, v) {
+        if (!this._db) return;
+        this._dbPut(k, v).catch(() => {});
+    }
+    _queueDelete(k) {
+        if (!this._db) return;
+        this._dbDelete(k).catch(() => {});
+    }
     _dbGet(k)    { return new Promise((r,j) => { const q=this._tx('readonly').get(k); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); }); }
     _dbPut(k,v)  { return new Promise((r,j) => { const q=this._tx('readwrite').put(v,k); q.onsuccess=()=>r(); q.onerror=()=>j(q.error); }); }
     _dbDelete(k) { return new Promise((r,j) => { const q=this._tx('readwrite').delete(k); q.onsuccess=()=>r(); q.onerror=()=>j(q.error); }); }

@@ -112,7 +112,7 @@ export class AxRuntime {
     this._stderrBuffer = '';
 
     // Intercept every `syscall` instruction before it executes
-    ax.hook_before_mnemonic(Mnemonic.Syscall, async (instance) => {
+    ax.hook_before_mnemonic(Mnemonic.Syscall, (instance) => {
       const num = instance.reg_read_64(Register.RAX);
       if (rt._traceEnabled && trace.syscalls.length < rt._traceMaxSyscalls) {
         trace.syscalls.push({
@@ -137,7 +137,7 @@ export class AxRuntime {
           return instance.commit();
         }
 
-        const data = await rt.vfs.read(file.path);
+        const data = rt.vfs.readSync(file.path);
         if (!data) {
           instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -5n)); // EIO
           return instance.commit();
@@ -175,10 +175,10 @@ export class AxRuntime {
           } else {
             let writeOffset = file.offset;
             if (file.append) {
-              const size = await rt.vfs.getSize(file.path);
+              const size = rt.vfs.getSizeSync(file.path);
               writeOffset = size < 0 ? 0 : size;
             }
-            const written = await rt.vfs.writeAt(file.path, buf, writeOffset);
+            const written = rt.vfs.writeAtSync(file.path, buf, writeOffset);
             file.offset = writeOffset + written;
             instance.reg_write_64(Register.RAX, BigInt(written));
           }
@@ -208,10 +208,10 @@ export class AxRuntime {
         const O_TRUNC  = 0x200;
         const O_APPEND = 0x400;
 
-        const data = await rt.vfs.read(path);
+        const data = rt.vfs.readSync(path);
         if (data === null) {
           if (flags & O_CREAT) {
-            await rt.vfs.write(path, new Uint8Array(0));
+            rt.vfs.writeSync(path, new Uint8Array(0));
           } else {
             instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -2n)); // ENOENT
             return instance.commit();
@@ -219,12 +219,12 @@ export class AxRuntime {
         }
 
         if ((flags & O_TRUNC) && !(flags & O_APPEND)) {
-          await rt.vfs.truncate(path, 0);
+          rt.vfs.truncateSync(path, 0);
         }
 
         const fd = rt._nextFd++;
         const initialOffset = (flags & O_APPEND)
-          ? Math.max(0, await rt.vfs.getSize(path))
+          ? Math.max(0, rt.vfs.getSizeSync(path))
           : 0;
         rt._fds.set(fd, {
           path,
@@ -265,7 +265,7 @@ export class AxRuntime {
           return instance.commit();
         }
 
-        const size = await rt.vfs.getSize(path);
+        const size = rt.vfs.getSizeSync(path);
         if (size === -1) {
           instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -2n)); // ENOENT
           return instance.commit();
@@ -294,7 +294,7 @@ export class AxRuntime {
           return instance.commit();
         }
 
-        const size = await rt.vfs.getSize(file.path);
+        const size = rt.vfs.getSizeSync(file.path);
         instance.mem_write_64(statPtr + 48n, BigInt(size));
         instance.mem_write_32(statPtr + 16n, 0x81edn); 
         instance.reg_write_64(Register.RAX, 0n);
