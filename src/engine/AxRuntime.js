@@ -136,10 +136,14 @@ export class AxRuntime {
           if (!file || !rt.vfs) {
             instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -9n)); // EBADF
           } else {
-            // NOTE: Current VFS write overwrites. We'd need a more complex VFS for true append/offset write.
-            // For now, let's just implement it as a simple "overwrite with this data" or ignore.
-            // A better VFS would handle growing buffers.
-            instance.reg_write_64(Register.RAX, len); 
+            let writeOffset = file.offset;
+            if (file.append) {
+              const size = await rt.vfs.getSize(file.path);
+              writeOffset = size < 0 ? 0 : size;
+            }
+            const written = await rt.vfs.writeAt(file.path, buf, writeOffset);
+            file.offset = writeOffset + written;
+            instance.reg_write_64(Register.RAX, BigInt(written));
           }
         }
         return instance.commit();
@@ -148,6 +152,7 @@ export class AxRuntime {
       // ── open(pathname, flags, mode) ────────────────────────────────────
       if (num === 2n) {
         const pathPtr = instance.reg_read_64(Register.RDI);
+        const flags = Number(instance.reg_read_64(Register.RSI));
         // Read null-terminated string
         let path = '';
         let curr = pathPtr;
@@ -162,14 +167,33 @@ export class AxRuntime {
           return instance.commit();
         }
 
+        const O_CREAT  = 0x40;
+        const O_TRUNC  = 0x200;
+        const O_APPEND = 0x400;
+
         const data = await rt.vfs.read(path);
         if (data === null) {
-          instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -2n)); // ENOENT
-          return instance.commit();
+          if (flags & O_CREAT) {
+            await rt.vfs.write(path, new Uint8Array(0));
+          } else {
+            instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -2n)); // ENOENT
+            return instance.commit();
+          }
+        }
+
+        if ((flags & O_TRUNC) && !(flags & O_APPEND)) {
+          await rt.vfs.truncate(path, 0);
         }
 
         const fd = rt._nextFd++;
-        rt._fds.set(fd, { path, offset: 0 });
+        const initialOffset = (flags & O_APPEND)
+          ? Math.max(0, await rt.vfs.getSize(path))
+          : 0;
+        rt._fds.set(fd, {
+          path,
+          offset: initialOffset,
+          append: Boolean(flags & O_APPEND),
+        });
         instance.reg_write_64(Register.RAX, BigInt(fd));
         return instance.commit();
       }

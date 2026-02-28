@@ -47,6 +47,28 @@ export class VirtualFS {
         await this._dbPut(path, bytes);
     }
 
+    async writeAt(path, data, offset = 0) {
+        const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+        const base = await this.read(path) ?? new Uint8Array(0);
+        const start = Math.max(0, Number(offset) || 0);
+        const outLen = Math.max(base.length, start + bytes.length);
+        const out = new Uint8Array(outLen);
+        out.set(base);
+        out.set(bytes, start);
+        this._mem.set(path, out);
+        await this._dbPut(path, out);
+        return bytes.length;
+    }
+
+    async truncate(path, size = 0) {
+        const current = await this.read(path) ?? new Uint8Array(0);
+        const nextSize = Math.max(0, Number(size) || 0);
+        const out = new Uint8Array(nextSize);
+        out.set(current.slice(0, nextSize));
+        this._mem.set(path, out);
+        await this._dbPut(path, out);
+    }
+
     async read(path) {
         if (this._mem.has(path)) return this._mem.get(path);
         const val = await this._dbGet(path);

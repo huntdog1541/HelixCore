@@ -145,8 +145,8 @@ export class App {
     this.terminal.system(`[HelixCore] Executing: ${file}`);
 
     const cmdMap = {
-      c:   `cosmocc -O2 ${file} -o program && ax ./program`,
-      asm: `nasm -f elf64 ${file} && ld -o program program.o && ax ./program`,
+      c:   `chibicc ${file} -> defasm -> ax ./program`,
+      asm: `defasm ${file} -> ax ./program`,
       sh:  `sh ./${file}`,
       elf: `ax ./${file}`,
     };
@@ -162,14 +162,18 @@ export class App {
         const kb = (elfBytes.length / 1024).toFixed(1);
         this.terminal.success(`[HelixCore] Assembled — ${kb} KB ELF`);
       } else if (lang === 'c') {
-        this.terminal.system('[HelixCore] Compiling C (Phase 3)...');
+        this.terminal.system('[HelixCore] Compiling C...');
         const result = await this.compiler.compileC(code);
         elfBytes = result.elf;
         sourceMap = result.sourceMap;
         const kb = (elfBytes.length / 1024).toFixed(1);
         this.terminal.success(`[HelixCore] Compiled — ${kb} KB ELF`);
+      } else if (lang === 'sh') {
+        throw new Error('Shell execution is not implemented yet. Use ASM, C, or ELF.');
       } else if (lang === 'elf') {
         elfBytes = await this.vfs.read(`/home/user/${file}`);
+      } else {
+        throw new Error(`Unsupported language mode: ${lang}`);
       }
 
       if (!elfBytes && (lang === 'asm' || lang === 'elf')) {
@@ -180,7 +184,7 @@ export class App {
       if (elfBytes) {
         result = await this.engine.run(elfBytes, sourceMap);
       } else {
-        throw new Error(`Real execution only supported for ASM/ELF. C/Shell require Phase 3/6.`);
+        throw new Error(`No executable payload produced for ${file}`);
       }
 
       this.terminal.success('─────────────────────────────────────────');
