@@ -137,4 +137,20 @@ describe('App file lifecycle handlers', () => {
     expect(app.vfs.delete).not.toHaveBeenCalled();
     expect(app.terminal.error).toHaveBeenCalledWith('[Error] Cannot delete the last file');
   });
+
+  it('rejects invalid file names on create', async () => {
+    const app = makeApp({ 'main.c': 'only' }, 'main.c');
+
+    await app._createFile('bad/name.c');
+    await app._createFile('bad\\name.c');
+    await app._createFile('   ');
+
+    expect(app.editor.hasFile('bad/name.c')).toBe(false);
+    expect(app.editor.hasFile('bad\\name.c')).toBe(false);
+    expect(app.vfs.write).not.toHaveBeenCalled();
+    expect(app.terminal.error).toHaveBeenCalledTimes(3);
+    expect(app.terminal.error).toHaveBeenNthCalledWith(1, '[Error] Invalid file name');
+    expect(app.terminal.error).toHaveBeenNthCalledWith(2, '[Error] Invalid file name');
+    expect(app.terminal.error).toHaveBeenNthCalledWith(3, '[Error] Invalid file name');
+  });
 });
