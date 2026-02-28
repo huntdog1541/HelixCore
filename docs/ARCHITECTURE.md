@@ -7,6 +7,7 @@ src/
 ├── main.js                  Entry — creates App, calls boot()
 │
 ├── engine/
+│   ├── AxBridge.js          Thin ax-x86 adapter (dependency boundary)
 │   ├── AxRuntime.js         ax-x86 WASM host — syscall dispatch, VFS bridge
 │   ├── Compiler.js          Compilation pipeline: ASM→ELF, C→ASM→ELF
 │   ├── Chibicc.js           Minimal recursive-descent C→GAS/AT&T compiler
@@ -86,6 +87,22 @@ ELF bytes
            *      unknown             → ENOSYS (-38), continue
 ```
 
+## Runtime Dependency Boundary (AxBridge)
+
+`AxRuntime` imports ax-x86 symbols through `AxBridge.js` rather than importing
+the npm package directly.
+
+Why this exists:
+- Keeps all third-party runtime wiring in one place.
+- Avoids leaking package-specific import details into core runtime logic.
+- Makes tests stable: unit tests mock `AxBridge.js` and do not depend on Vite/
+  Vitest resolving the WASM package entrypoint.
+
+Conventions:
+- If new ax-x86 symbols are needed, export them from `AxBridge.js` and import
+  from there in `AxRuntime`.
+- Tests for runtime behavior should mock `src/engine/AxBridge.js`, not `ax-x86`.
+
 ## Chibicc — Minimal C Compiler
 
 Chibicc is a recursive-descent, single-pass C→AT&T x86-64 compiler. It produces
@@ -160,6 +177,14 @@ any JavaScript layout recalculation.
 
 Files are stored in IndexedDB (`helixcore-vfs`, object store `files`) and mirrored
 into an in-memory `Map` for synchronous-compatible access patterns.
+
+Persistence/listing behavior:
+- `open()` hydrates the in-memory map from IndexedDB so a fresh app load sees
+  previously written files immediately.
+- `list(dir)` merges keys from memory and IndexedDB, then deduplicates by
+  top-level entry name for stable directory-style results.
+- This ensures listings remain correct across reloads and multi-instance writes,
+  not only for paths already read into memory.
 
 Pre-seeded read-only paths:
 

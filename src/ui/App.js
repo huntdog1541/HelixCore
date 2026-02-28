@@ -7,6 +7,7 @@ import { AxRuntime }   from '../engine/AxRuntime.js';
 import { Compiler }    from '../engine/Compiler.js';
 import { VirtualFS }   from '../engine/VirtualFS.js';
 import { Editor }      from '../editor/Editor.js';
+import { DEMO_FILES }  from '../editor/demoFiles.js';
 import { Terminal }    from '../terminal/Terminal.js';
 import { Titlebar }    from './Titlebar.js';
 import { Sidebar }     from './Sidebar.js';
@@ -54,9 +55,17 @@ export class App {
     this.sidebar.on('run',   () => this.runProgram());
     this.sidebar.on('clear', () => this.terminal.clear());
     this.sidebar.on('elfupload', ({ file }) => this._handleElfUpload(file));
+    this.sidebar.on('filecreate', ({ name }) => this._createFile(name));
+    this.sidebar.on('filerename', ({ oldName, newName }) => this._renameFile(oldName, newName));
+    this.sidebar.on('filedelete', ({ name }) => this._deleteFile(name));
 
     this.editor.on('cursor', ({ line, col }) => this.statusbar.setCursor(line, col));
-    this.editor.on('dirty',  ({ name, dirty }) => this.sidebar.setDirty(name, dirty));
+    this.editor.on('dirty',  ({ name, dirty }) => {
+      this.sidebar.setDirty(name, dirty);
+      if (!dirty) return;
+      const code = this.editor.getFileContent(name);
+      this.vfs.write(this._vfsPath(name), code).catch(() => {});
+    });
 
     this.engine.onStdout = chunk => this.terminal.write(chunk, 'stdout');
     this.engine.onStderr = chunk => this.terminal.error(chunk);
@@ -129,6 +138,7 @@ export class App {
     this.terminal.system('Press ▶ RUN or Ctrl+Enter to execute.');
     this.sidebar.enableRun();
     await this.vfs.open();
+    await this._initialiseWorkspaceFiles();
   }
 
   async runProgram() {
@@ -212,5 +222,116 @@ export class App {
     this.terminal.success(`[HelixCore] ELF loaded: ${file.name} | ${info.arch} | ${info.type} | entry: ${info.entryPoint}`);
     this.terminal.info('Press ▶ RUN to execute.');
     await this.vfs.write(`/home/user/${file.name}`, bytes);
+    this.editor.addFile(file.name, '');
+    this.sidebar.setFiles(this.editor.listFiles(), file.name);
+    this.sidebar.selectFile(file.name, true);
+  }
+
+  _vfsPath(name) {
+    return `/home/user/${name}`;
+  }
+
+  async _initialiseWorkspaceFiles() {
+    const existing = await this.vfs.list('/home/user');
+    const existingFiles = existing.filter(e => !e.isDir).map(e => e.name);
+
+    if (!existingFiles.length) {
+      for (const [name, content] of Object.entries(DEMO_FILES)) {
+        await this.vfs.write(this._vfsPath(name), content);
+      }
+    }
+
+    const files = await this.vfs.list('/home/user');
+    const fileMap = {};
+
+    for (const entry of files) {
+      if (entry.isDir) continue;
+      const bytes = await this.vfs.read(this._vfsPath(entry.name));
+      if (!bytes) continue;
+
+      if (entry.name.endsWith('.elf') || entry.name.endsWith('.bin') || entry.name.endsWith('.com')) {
+        fileMap[entry.name] = '';
+      } else {
+        fileMap[entry.name] = new TextDecoder().decode(bytes);
+      }
+    }
+
+    if (!Object.keys(fileMap).length) {
+      fileMap['main.c'] = '';
+    }
+
+    const active = Object.keys(fileMap)[0];
+    this.editor.setFiles(fileMap, active);
+    this.sidebar.setFiles(this.editor.listFiles(), active);
+    this.sidebar.selectFile(active, true);
+  }
+
+  _isValidFilename(name) {
+    if (!name) return false;
+    if (name.includes('/') || name.includes('\\')) return false;
+    return true;
+  }
+
+  async _createFile(name) {
+    const fileName = (name ?? '').trim();
+    if (!this._isValidFilename(fileName)) {
+      this.terminal.error('[Error] Invalid file name');
+      return;
+    }
+    if (this.editor.hasFile(fileName)) {
+      this.terminal.error(`[Error] File already exists: ${fileName}`);
+      return;
+    }
+
+    this.editor.addFile(fileName, '');
+    await this.vfs.write(this._vfsPath(fileName), '');
+    this.sidebar.setFiles(this.editor.listFiles(), fileName);
+    this.sidebar.selectFile(fileName, true);
+  }
+
+  async _renameFile(oldName, newName) {
+    const from = (oldName ?? '').trim();
+    const to = (newName ?? '').trim();
+    if (!this._isValidFilename(to)) {
+      this.terminal.error('[Error] Invalid file name');
+      return;
+    }
+    if (!this.editor.hasFile(from)) {
+      this.terminal.error(`[Error] File not found: ${from}`);
+      return;
+    }
+    if (from === to) return;
+    if (this.editor.hasFile(to)) {
+      this.terminal.error(`[Error] File already exists: ${to}`);
+      return;
+    }
+
+    const content = this.editor.getFileContent(from);
+    this.editor.renameFile(from, to);
+    await this.vfs.write(this._vfsPath(to), content);
+    await this.vfs.delete(this._vfsPath(from));
+
+    this.sidebar.setFiles(this.editor.listFiles(), to);
+    this.sidebar.selectFile(to, true);
+  }
+
+  async _deleteFile(name) {
+    const target = (name ?? '').trim();
+    if (!this.editor.hasFile(target)) return;
+
+    const names = this.editor.listFiles();
+    if (names.length <= 1) {
+      this.terminal.error('[Error] Cannot delete the last file');
+      return;
+    }
+
+    const wasActive = this.editor.getFile() === target;
+    this.editor.deleteFile(target);
+    await this.vfs.delete(this._vfsPath(target));
+
+    const next = this.editor.listFiles()[0];
+    this.sidebar.setFiles(this.editor.listFiles(), wasActive ? next : this.sidebar.getActiveFile());
+    if (wasActive) this.sidebar.selectFile(next, true);
+    else this.sidebar.selectFile(this.sidebar.getActiveFile(), false);
   }
 }

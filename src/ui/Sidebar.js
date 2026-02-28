@@ -4,18 +4,22 @@
 
 import { EventEmitter } from '../utils/EventEmitter.js';
 
-const FILES = [
-    { name: 'main.c',    icon: '◈' },
-    { name: 'hello.asm', icon: '◇' },
-    { name: 'shell.sh',  icon: '◇' },
-];
-
 export class Sidebar extends EventEmitter {
-    constructor(el) { super(); this.el = el; this._active = 'main.c'; }
+  constructor(el) {
+    super();
+    this.el = el;
+    this._active = null;
+    this._files = [];
+  }
 
     mount() {
         this.el.innerHTML = `
       <div class="sidebar-section">Files</div>
+      <div class="sidebar-actions" style="padding-top:0;padding-bottom:8px">
+        <button class="btn btn-secondary" id="file-new-btn" style="flex:1">NEW</button>
+        <button class="btn btn-secondary" id="file-ren-btn" style="flex:1">REN</button>
+        <button class="btn btn-secondary" id="file-del-btn" style="flex:1">DEL</button>
+      </div>
       <div class="file-tree" id="file-tree"></div>
 
       <div class="sidebar-section">Language</div>
@@ -37,6 +41,9 @@ export class Sidebar extends EventEmitter {
     `;
 
         this._renderTree();
+        document.getElementById('file-new-btn').onclick = () => this._promptCreate();
+        document.getElementById('file-ren-btn').onclick = () => this._promptRename();
+        document.getElementById('file-del-btn').onclick = () => this._promptDelete();
         document.getElementById('run-btn').onclick    = () => this.emit('run');
         document.getElementById('clear-btn').onclick  = () => this.emit('clear');
         document.getElementById('upload-btn').onclick = () => document.getElementById('elf-upload').click();
@@ -55,10 +62,12 @@ export class Sidebar extends EventEmitter {
 
     _renderTree() {
         const tree = document.getElementById('file-tree');
-        tree.innerHTML = FILES.map(f => `
-      <div class="file-item ${f.name === this._active ? 'active' : ''}" data-file="${f.name}">
-        <span class="file-icon">${f.icon}</span> ${f.name}
-        <span class="dirty-dot" id="dirty-${f.name}" style="display:none">●</span>
+        if (!tree) return;
+
+        tree.innerHTML = this._files.map(name => `
+      <div class="file-item ${name === this._active ? 'active' : ''}" data-file="${name}">
+        <span class="file-icon">${this._iconFor(name)}</span> ${name}
+        <span class="dirty-dot" id="dirty-${this._dotId(name)}" style="display:none">●</span>
       </div>
     `).join('');
 
@@ -77,6 +86,27 @@ export class Sidebar extends EventEmitter {
     setLang(lang) { const s = document.getElementById('lang-select'); if (s) s.value = lang; }
     enableRun()  { const b = document.getElementById('run-btn'); if (b) b.disabled = false; }
     disableRun() { const b = document.getElementById('run-btn'); if (b) b.disabled = true; }
+    getActiveFile() { return this._active; }
+
+    setFiles(names, active = null) {
+      this._files = [...new Set((names ?? []).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      if (this._files.length === 0) {
+        this._active = null;
+      } else if (active && this._files.includes(active)) {
+        this._active = active;
+      } else if (!this._active || !this._files.includes(this._active)) {
+        this._active = this._files[0];
+      }
+      this._renderTree();
+    }
+
+    selectFile(name, emit = false) {
+      if (!this._files.includes(name)) return;
+      this._active = name;
+      this._renderTree();
+      this._autoSetLang(name);
+      if (emit) this.emit('fileselect', { name });
+    }
 
     _autoSetLang(filename) {
         const ext = filename.split('.').pop().toLowerCase();
@@ -85,8 +115,38 @@ export class Sidebar extends EventEmitter {
         if (lang) this.setLang(lang);
     }
 
+    _iconFor(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      if (ext === 'c' || ext === 'cpp' || ext === 'h') return '◈';
+      return '◇';
+    }
+
+    _dotId(name) {
+      return name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    _promptCreate() {
+      const name = window.prompt('New file name', 'newfile.c');
+      if (!name) return;
+      this.emit('filecreate', { name: name.trim() });
+    }
+
+    _promptRename() {
+      if (!this._active) return;
+      const name = window.prompt('Rename file', this._active);
+      if (!name) return;
+      this.emit('filerename', { oldName: this._active, newName: name.trim() });
+    }
+
+    _promptDelete() {
+      if (!this._active) return;
+      const ok = window.confirm(`Delete ${this._active}?`);
+      if (!ok) return;
+      this.emit('filedelete', { name: this._active });
+    }
+
     setDirty(name, dirty) {
-        const dot = document.getElementById(`dirty-${name}`);
+      const dot = document.getElementById(`dirty-${this._dotId(name)}`);
         if (dot) dot.style.display = dirty ? 'inline' : 'none';
     }
 }

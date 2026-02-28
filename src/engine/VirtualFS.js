@@ -38,6 +38,7 @@ export class VirtualFS {
             req.onsuccess = e => res(e.target.result);
             req.onerror   = () => rej(req.error);
         });
+        await this._hydrateFromDb();
         return this;
     }
 
@@ -87,18 +88,69 @@ export class VirtualFS {
 
     async list(dir = '/') {
         const prefix = dir.endsWith('/') ? dir : dir + '/';
-        return [...this._mem.keys()]
-            .filter(k => k.startsWith(prefix))
-            .map(k => ({
-                name:  k.slice(prefix.length).split('/')[0],
-                path:  k,
-                isDir: k.slice(prefix.length).includes('/'),
-            }));
+        const keys = new Set(this._mem.keys());
+
+        if (this._db) {
+            const dbKeys = await this._dbKeys();
+            dbKeys.forEach(k => keys.add(k));
+        }
+
+        const rows = new Map();
+        for (const key of keys) {
+            if (!key.startsWith(prefix)) continue;
+            const rest = key.slice(prefix.length);
+            if (!rest) continue;
+            const name = rest.split('/')[0];
+            const isDir = rest.includes('/');
+            const path = isDir ? `${prefix}${name}` : key;
+            const prev = rows.get(name);
+            rows.set(name, {
+                name,
+                path,
+                isDir: Boolean(isDir || prev?.isDir),
+            });
+        }
+
+        return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
 
     async delete(path) {
         this._mem.delete(path);
         await this._dbDelete(path);
+    }
+
+    async _hydrateFromDb() {
+        const keys = await this._dbKeys();
+        for (const key of keys) {
+            if (this._mem.has(key)) continue;
+            const val = await this._dbGet(key);
+            if (val) this._mem.set(key, val);
+        }
+    }
+
+    _dbKeys() {
+        return new Promise((resolve, reject) => {
+            const store = this._tx('readonly');
+            if (typeof store.getAllKeys === 'function') {
+                const req = store.getAllKeys();
+                req.onsuccess = () => resolve(req.result ?? []);
+                req.onerror = () => reject(req.error);
+                return;
+            }
+
+            const out = [];
+            const req = store.openCursor();
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (!cursor) {
+                    resolve(out);
+                    return;
+                }
+                out.push(cursor.key);
+                cursor.continue();
+            };
+            req.onerror = () => reject(req.error);
+        });
     }
 
     _tx(mode) { return this._db.transaction(STORE, mode).objectStore(STORE); }

@@ -22,7 +22,7 @@
  *   5. await ax.execute()                   — run until instance.stop()
  */
 
-import initAx, { Axecutor, Mnemonic, Register, version as axVersion } from 'ax-x86';
+import { initAx, Axecutor, Mnemonic, Register, axVersion } from './AxBridge.js';
 
 export class AxRuntime {
   constructor() {

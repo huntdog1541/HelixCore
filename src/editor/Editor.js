@@ -100,6 +100,53 @@ export class Editor extends EventEmitter {
     getCode()  { return this._view?.state.doc.toString() ?? ''; }
     getFile()  { return this.currentFile; }
     isDirty(f) { return this.dirty.has(f ?? this.currentFile); }
+    hasFile(name) { return Object.prototype.hasOwnProperty.call(this.files, name); }
+    listFiles() { return Object.keys(this.files).sort((a, b) => a.localeCompare(b)); }
+    getFileContent(name) {
+        if (name === this.currentFile && this._view) return this._view.state.doc.toString();
+        return this.files[name] ?? '';
+    }
+
+    setFiles(fileMap, activeFile = null) {
+        this.files = { ...(fileMap ?? {}) };
+        if (!Object.keys(this.files).length) this.files['main.c'] = '';
+
+        const nextActive = activeFile && Object.prototype.hasOwnProperty.call(this.files, activeFile)
+            ? activeFile
+            : (Object.prototype.hasOwnProperty.call(this.files, this.currentFile) ? this.currentFile : Object.keys(this.files)[0]);
+
+        this.currentFile = nextActive;
+        this.dirty.clear();
+        this._createView(this.currentFile);
+
+        const fn = document.getElementById('tab-filename');
+        if (fn) fn.textContent = this.currentFile;
+
+        const dot = document.getElementById('tab-dirty');
+        if (dot) dot.classList.remove('dirty');
+    }
+
+    addFile(name, content = '') {
+        this.files[name] = content;
+        this.dirty.delete(name);
+    }
+
+    renameFile(oldName, newName) {
+        if (!this.hasFile(oldName)) return;
+        const content = this.getFileContent(oldName);
+        const wasDirty = this.dirty.has(oldName);
+        delete this.files[oldName];
+        this.files[newName] = content;
+        this.dirty.delete(oldName);
+        if (wasDirty) this.dirty.add(newName);
+        if (this.currentFile === oldName) this.currentFile = newName;
+    }
+
+    deleteFile(name) {
+        if (!this.hasFile(name)) return;
+        delete this.files[name];
+        this.dirty.delete(name);
+    }
 
     markClean(f = this.currentFile) {
         this.dirty.delete(f);

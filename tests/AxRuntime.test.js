@@ -1,31 +1,35 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AxRuntime } from '../src/engine/AxRuntime.js';
 
-// Define constants that would come from ax-x86
-const Mnemonic = { Syscall: 746 };
-const Register = { RAX: 1, RDI: 6, RSI: 5, RDX: 4, RBX: 2, RCX: 3, RSP: 7, RBP: 8, RIP: 0 };
+const { Mnemonic, Register, MockAxecutor } = vi.hoisted(() => {
+  const Mnemonic = { Syscall: 746 };
+  const Register = { RAX: 1, RDI: 6, RSI: 5, RDX: 4, RBX: 2, RCX: 3, RSP: 7, RBP: 8, RIP: 0 };
 
-class MockAxecutor {
+  class MockAxecutor {
     constructor() {}
     static from_binary = vi.fn(() => new MockAxecutor());
     init_stack_program_start = vi.fn();
     hook_before_mnemonic = vi.fn();
     execute = vi.fn(async () => {});
-    reg_read_64 = vi.fn((reg) => 0n);
+    step = vi.fn(async () => true);
+    reg_read_64 = vi.fn(() => 0n);
     reg_write_64 = vi.fn();
     mem_read_bytes = vi.fn(() => new Uint8Array());
     commit = vi.fn(() => ({ type: 'commit' }));
     stop = vi.fn(() => ({ type: 'stop' }));
-}
+  }
 
-// Mock the module before it's imported by AxRuntime.js
-vi.mock('ax-x86', () => {
+  return { Mnemonic, Register, MockAxecutor };
+});
+
+// Mock the bridge module before it's imported by AxRuntime.js
+vi.mock('../src/engine/AxBridge.js', () => {
   return {
-    default: vi.fn(async () => {}),
+    initAx: vi.fn(async () => {}),
     Axecutor: MockAxecutor,
     Mnemonic,
     Register,
-    version: vi.fn(() => '0.6.0'),
+    axVersion: vi.fn(() => '0.6.0'),
   };
 });
 
@@ -74,7 +78,7 @@ describe('AxRuntime', () => {
     });
     mockAx.mem_read_bytes.mockReturnValue(new TextEncoder().encode('hello'));
 
-    const result = syscallHook(mockAx);
+    const result = await syscallHook(mockAx);
     expect(result).toEqual({ type: 'commit' });
     expect(onStdout).toHaveBeenCalledWith('hello');
     expect(mockAx.reg_write_64).toHaveBeenCalledWith(Register.RAX, 5n);
