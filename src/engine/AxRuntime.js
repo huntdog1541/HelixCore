@@ -42,6 +42,14 @@ export class AxRuntime {
     this._heapStart = 0x800000n; // Initial heap start
     this._brk       = 0x800000n; // Current program break
     this._heapMapped = false;
+
+    this._registerBaselineEnabled = Boolean(import.meta.env?.DEV);
+    this._stdoutBuffer = '';
+    this._stderrBuffer = '';
+  }
+
+  setRegisterBaseline(enabled) {
+    this._registerBaselineEnabled = Boolean(enabled);
   }
 
   /**
@@ -74,6 +82,10 @@ export class AxRuntime {
       ['TERM=xterm-256color', 'PATH=/usr/bin:/bin', 'HOME=/root'],
     );
 
+    if (this._registerBaselineEnabled) {
+      this._applyRegisterBaseline(ax);
+    }
+
     let exitCode = 0;
     const rt = this;
 
@@ -82,6 +94,8 @@ export class AxRuntime {
     this._nextFd = 3;
     this._brk = this._heapStart;
     this._heapMapped = false;
+    this._stdoutBuffer = '';
+    this._stderrBuffer = '';
 
     // Intercept every `syscall` instruction before it executes
     ax.hook_before_mnemonic(Mnemonic.Syscall, async (instance) => {
@@ -127,8 +141,7 @@ export class AxRuntime {
 
         if (fd === 1n || fd === 2n) {
           const text = new TextDecoder().decode(buf);
-          if (fd === 1n) rt.onStdout?.(text);
-          else rt.onStderr?.(text);
+          rt._appendOutput(fd, text);
           instance.reg_write_64(Register.RAX, len);
         } else {
           // Write to virtual file
@@ -384,6 +397,8 @@ export class AxRuntime {
       }
     }
 
+    this._flushOutputBuffers(true);
+
     const registers = {
       rax: r64(Register.RAX),
       rbx: r64(Register.RBX),
@@ -486,5 +501,59 @@ export class AxRuntime {
       stack: dump(rsp, safeRead(rsp, 128)),
       heap: dump(brk > 64n ? brk - 64n : this._heapStart, safeRead(brk > 64n ? brk - 64n : this._heapStart, 64)),
     };
+  }
+
+  _applyRegisterBaseline(ax) {
+    const regs = [
+      Register.RAX,
+      Register.RBX,
+      Register.RCX,
+      Register.RDX,
+      Register.RSI,
+      Register.RDI,
+      Register.RBP,
+    ];
+
+    for (const reg of regs) {
+      try {
+        ax.reg_write_64(reg, 0n);
+      } catch {
+      }
+    }
+  }
+
+  _appendOutput(fd, text) {
+    if (fd === 1n) {
+      this._stdoutBuffer += text;
+      this._drainOutputBuffer('_stdoutBuffer', this.onStdout);
+      return;
+    }
+
+    if (fd === 2n) {
+      this._stderrBuffer += text;
+      this._drainOutputBuffer('_stderrBuffer', this.onStderr);
+    }
+  }
+
+  _drainOutputBuffer(key, sink) {
+    let idx = this[key].indexOf('\n');
+    while (idx !== -1) {
+      const line = this[key].slice(0, idx);
+      sink?.(line);
+      this[key] = this[key].slice(idx + 1);
+      idx = this[key].indexOf('\n');
+    }
+  }
+
+  _flushOutputBuffers(force = false) {
+    if (!force) return;
+    if (this._stdoutBuffer.length) {
+      this.onStdout?.(this._stdoutBuffer);
+      this._stdoutBuffer = '';
+    }
+    if (this._stderrBuffer.length) {
+      this.onStderr?.(this._stderrBuffer);
+      this._stderrBuffer = '';
+    }
   }
 }

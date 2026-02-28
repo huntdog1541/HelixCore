@@ -57,6 +57,7 @@ export class App {
     this.sidebar.on('fileselect', ({ name }) => this.editor.loadFile(name));
     this.sidebar.on('run',   () => this.runProgram());
     this.sidebar.on('clear', () => this.terminal.clear());
+    this.sidebar.on('registerbaseline', ({ enabled }) => this.engine.setRegisterBaseline(enabled));
     this.sidebar.on('elfupload', ({ file }) => this._handleElfUpload(file));
     this.sidebar.on('filecreate', ({ name }) => this._createFile(name));
     this.sidebar.on('filerename', ({ oldName, newName }) => this._renameFile(oldName, newName));
@@ -140,6 +141,7 @@ export class App {
 
     this.terminal.system('Press ▶ RUN or Ctrl+Enter to execute.');
     this.sidebar.enableRun();
+    this.sidebar.setRegisterBaseline(Boolean(this.engine?._registerBaselineEnabled));
     await this.vfs.open();
     await this._initialiseWorkspaceFiles();
   }
@@ -171,6 +173,7 @@ export class App {
       code,
       codeLength: code.length,
       engineInitialized: Boolean(this.engine?._initialized),
+      registerBaselineEnabled: Boolean(this.engine?._registerBaselineEnabled),
       activeView: this.terminal?._activeView ?? 'editor',
     };
     this.terminal.cmd(command);

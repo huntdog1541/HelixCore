@@ -73,15 +73,15 @@ describe('AxRuntime', () => {
       if (reg === Register.RAX) return 1n; // write
       if (reg === Register.RDI) return 1n; // stdout
       if (reg === Register.RSI) return 0x1000n; // ptr
-      if (reg === Register.RDX) return 5n; // len
+      if (reg === Register.RDX) return 6n; // len
       return 0n;
     });
-    mockAx.mem_read_bytes.mockReturnValue(new TextEncoder().encode('hello'));
+    mockAx.mem_read_bytes.mockReturnValue(new TextEncoder().encode('hello\n'));
 
     const result = await syscallHook(mockAx);
     expect(result).toEqual({ type: 'commit' });
     expect(onStdout).toHaveBeenCalledWith('hello');
-    expect(mockAx.reg_write_64).toHaveBeenCalledWith(Register.RAX, 5n);
+    expect(mockAx.reg_write_64).toHaveBeenCalledWith(Register.RAX, 6n);
 
     // Stop execution
     mockAx.reg_read_64.mockImplementation((reg) => {

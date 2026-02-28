@@ -142,6 +142,21 @@
 }
 .lang-select:focus { border-color: var(--phosphor-dim); }
 
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 6px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  letter-spacing: 1px;
+  user-select: none;
+}
+
+.sidebar-toggle input {
+  accent-color: var(--phosphor);
+}
+
 .sidebar-actions {
   display: flex;
   gap: 6px;

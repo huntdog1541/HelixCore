@@ -30,6 +30,11 @@ export class Sidebar extends EventEmitter {
         <option value="elf">ELF Binary (upload)</option>
       </select>
 
+      <label class="sidebar-toggle" for="register-baseline-toggle">
+        <input type="checkbox" id="register-baseline-toggle" />
+        <span>Deterministic Regs</span>
+      </label>
+
       <div class="sidebar-actions">
         <button class="btn btn-run" id="run-btn" disabled>▶ RUN</button>
       </div>
@@ -46,6 +51,9 @@ export class Sidebar extends EventEmitter {
         document.getElementById('file-del-btn').onclick = () => this._promptDelete();
         document.getElementById('run-btn').onclick    = () => this.emit('run');
         document.getElementById('clear-btn').onclick  = () => this.emit('clear');
+        document.getElementById('register-baseline-toggle').onchange = e => {
+          this.emit('registerbaseline', { enabled: Boolean(e.target.checked) });
+        };
         document.getElementById('upload-btn').onclick = () => document.getElementById('elf-upload').click();
         document.getElementById('elf-upload').onchange = e => {
             const file = e.target.files[0];
@@ -87,6 +95,10 @@ export class Sidebar extends EventEmitter {
     enableRun()  { const b = document.getElementById('run-btn'); if (b) b.disabled = false; }
     disableRun() { const b = document.getElementById('run-btn'); if (b) b.disabled = true; }
     getActiveFile() { return this._active; }
+    setRegisterBaseline(enabled) {
+      const t = document.getElementById('register-baseline-toggle');
+      if (t) t.checked = Boolean(enabled);
+    }
 
     setFiles(names, active = null) {
       this._files = [...new Set((names ?? []).filter(Boolean))].sort((a, b) => a.localeCompare(b));
