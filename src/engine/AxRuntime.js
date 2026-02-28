@@ -46,10 +46,17 @@ export class AxRuntime {
     this._registerBaselineEnabled = Boolean(import.meta.env?.DEV);
     this._stdoutBuffer = '';
     this._stderrBuffer = '';
+    this._traceEnabled = Boolean(import.meta.env?.DEV);
+    this._traceMaxSteps = 64;
+    this._traceMaxSyscalls = 64;
   }
 
   setRegisterBaseline(enabled) {
     this._registerBaselineEnabled = Boolean(enabled);
+  }
+
+  setTraceLogging(enabled) {
+    this._traceEnabled = Boolean(enabled);
   }
 
   /**
@@ -87,7 +94,14 @@ export class AxRuntime {
     }
 
     let exitCode = 0;
+    let stopReason = 'unknown';
     const rt = this;
+    const trace = {
+      enabled: this._traceEnabled,
+      steps: [],
+      syscalls: [],
+      stopReason: 'unknown',
+    };
 
     // Reset FD table and heap for each run
     this._fds.clear();
@@ -100,6 +114,16 @@ export class AxRuntime {
     // Intercept every `syscall` instruction before it executes
     ax.hook_before_mnemonic(Mnemonic.Syscall, async (instance) => {
       const num = instance.reg_read_64(Register.RAX);
+      if (rt._traceEnabled && trace.syscalls.length < rt._traceMaxSyscalls) {
+        trace.syscalls.push({
+          idx: trace.syscalls.length,
+          rip: this._toHex(instance.reg_read_64(Register.RIP)),
+          num: Number(num),
+          rdi: this._toHex(instance.reg_read_64(Register.RDI)),
+          rsi: this._toHex(instance.reg_read_64(Register.RSI)),
+          rdx: this._toHex(instance.reg_read_64(Register.RDX)),
+        });
+      }
 
       // ── read(fd, buf, len) ─────────────────────────────────────────────
       if (num === 0n) {
@@ -339,6 +363,7 @@ export class AxRuntime {
       // ── exit(code) / exit_group(code) ─────────────────────────────────
       if (num === 60n || num === 231n) {
         exitCode = Number(instance.reg_read_64(Register.RDI));
+        stopReason = `exit(${exitCode})`;
         return instance.stop();   // halt emulation cleanly
       }
 
@@ -360,10 +385,27 @@ export class AxRuntime {
       }
     };
 
-    // Execute until stop. This is more robust than JS-side step loops.
+    // Execute instructions one-by-one until stop.
+    // Using step() here avoids async-hook issues seen with execute() in some builds.
     try {
-      await ax.execute();
+      while (true) {
+        if (this._traceEnabled && trace.steps.length < this._traceMaxSteps) {
+          trace.steps.push({
+            idx: trace.steps.length,
+            rip: this._toHex(ax.reg_read_64(Register.RIP)),
+            rsp: this._toHex(ax.reg_read_64(Register.RSP)),
+            rax: this._toHex(ax.reg_read_64(Register.RAX)),
+          });
+        }
+        const stopped = await ax.step();
+        instrCount++;
+        if (stopped) {
+          if (stopReason === 'unknown') stopReason = 'step-returned-stopped';
+          break;
+        }
+      }
     } catch (err) {
+      stopReason = 'error';
       // Log the register state when an error occurs to help debug
       const ripVal = r64(Register.RIP);
       let debugMsg = `AX EXECUTION ERROR at RIP=${ripVal}: ${err.message}`;
@@ -393,6 +435,8 @@ export class AxRuntime {
       throw enhancedErr;
     }
 
+    trace.stopReason = stopReason;
+
     this._flushOutputBuffers(true);
 
     const registers = {
@@ -412,9 +456,18 @@ export class AxRuntime {
       runtime:    Math.round(performance.now() - t0),
       instrCount,
       registers,
+      trace,
       disassembly: this._buildDisassembly(elfBytes, sourceMap),
       memory: await this._buildMemorySnapshot(ax, registers),
     };
+  }
+
+  _toHex(value) {
+    try {
+      return '0x' + BigInt(value).toString(16).padStart(16, '0');
+    } catch {
+      return '0x0000000000000000';
+    }
   }
 
   _buildDisassembly(elfBytes, sourceMap = []) {

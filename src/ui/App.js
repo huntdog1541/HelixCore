@@ -229,6 +229,12 @@ export class App {
           runtime: result.runtime,
           instrCount: result.instrCount,
           registers: result.registers,
+          trace: {
+            enabled: Boolean(result.trace?.enabled),
+            stopReason: result.trace?.stopReason ?? 'unknown',
+            steps: (result.trace?.steps ?? []).slice(0, 20),
+            syscalls: (result.trace?.syscalls ?? []).slice(0, 20),
+          },
           disassemblyPreview: (result.disassembly ?? []).slice(0, 8),
           memoryPreview: {
             rip: (result.memory?.rip ?? []).slice(0, 4),
