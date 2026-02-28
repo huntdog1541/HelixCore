@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Compiler } from '../src/engine/Compiler.js';
+import { Terminal } from '../src/terminal/Terminal.js';
 
 vi.mock('../src/engine/AxRuntime.js', () => {
   return {
@@ -100,5 +101,42 @@ _start:
     expect(app.terminal.updateDisassembly).toHaveBeenCalledTimes(1);
     expect(app.terminal.updateMemory).toHaveBeenCalledTimes(1);
     expect(app.statusbar.setLastExit).toHaveBeenCalledWith(0);
+  });
+
+  it('toggles terminal sections when switching tabs', () => {
+    const els = {
+      '#terminal-output': { style: {} },
+      '#process-info': { style: {} },
+      '#registers': { style: {} },
+      '#disassembly': { style: {} },
+      '#memory': { style: {} },
+    };
+
+    const container = {
+      querySelector: (sel) => els[sel] ?? null,
+    };
+
+    const terminal = new Terminal(container);
+
+    terminal.setView('editor');
+    expect(els['#terminal-output'].style.display).toBe('block');
+    expect(els['#process-info'].style.display).toBe('block');
+    expect(els['#registers'].style.display).toBe('block');
+    expect(els['#disassembly'].style.display).toBe('none');
+    expect(els['#memory'].style.display).toBe('none');
+
+    terminal.setView('disasm');
+    expect(els['#terminal-output'].style.display).toBe('none');
+    expect(els['#process-info'].style.display).toBe('none');
+    expect(els['#registers'].style.display).toBe('none');
+    expect(els['#disassembly'].style.display).toBe('block');
+    expect(els['#memory'].style.display).toBe('none');
+
+    terminal.setView('memory');
+    expect(els['#terminal-output'].style.display).toBe('none');
+    expect(els['#process-info'].style.display).toBe('none');
+    expect(els['#registers'].style.display).toBe('none');
+    expect(els['#disassembly'].style.display).toBe('none');
+    expect(els['#memory'].style.display).toBe('block');
   });
 });
