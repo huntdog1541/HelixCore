@@ -6,6 +6,10 @@ export default defineConfig({
             // Required for SharedArrayBuffer (used by some WASM builds)
             'Cross-Origin-Opener-Policy': 'same-origin',
             'Cross-Origin-Embedder-Policy': 'require-corp',
+            // CORS headers for dev mode
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
         },
     },
     optimizeDeps: {
