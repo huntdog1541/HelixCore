@@ -19,16 +19,6 @@
 import { AssemblyState } from '@defasm/core';
 import { Chibicc }      from './Chibicc.js';
 
-// Try to import Node's fs for server-side logging
-let fs;
-try {
-  // In Node.js environment, this might work
-  const _fs = await import('fs');
-  fs = _fs.default || _fs;
-} catch (e) {
-  // In the browser, or if top-level await is not supported, fs won't be available
-}
-
 const BASE_VA   = 0x400000n;
 const ELF_HSIZ  = 64;
 const PHDR_SIZ  = 56;
@@ -75,33 +65,12 @@ export class Compiler {
    * @returns {Promise<object>} { elf: Uint8Array, sourceMap: Array }
    */
   async compileC(source) {
-    const log = (msg) => {
-      if (fs) {
-        try {
-          fs.appendFileSync('compilation.log', `[${new Date().toISOString()}] ${msg}\n`);
-        } catch (e) {
-          // Ignore log errors
-        }
-      }
-    };
-
-    log('--- NEW COMPILATION ---');
-    log('Source code provided.');
-
     // Generate x86-64 assembly using chibicc
     const { assembly, sourceMap: cSourceMap } = this._chibicc.compile(source);
-    
-    log('Generated assembly:');
-    log(assembly);
 
     // Assemble the generated assembly into an ELF
     try {
       const { elf, state } = this.assembleGas(assembly);
-
-      log('Assembly successful. ELF generated.');
-      if (state && state.statements) {
-        log(`Number of statements: ${state.statements.length}`);
-      }
 
       // Now we map the C source map (asm lines) to ELF virtual addresses
       // state.statements is an array of all assembly statements
@@ -120,8 +89,6 @@ export class Compiler {
         }
       }
       
-      log(`Heuristic statement count: ${stmtIdx}`);
-
       if (state && state.statements) {
         for (const entry of cSourceMap) {
           // Find the statement at the corresponding asmLine
@@ -155,12 +122,6 @@ export class Compiler {
       
       return { elf, sourceMap: finalSourceMap };
     } catch (err) {
-      log('Compilation failed with error:');
-      log(err.stack || err.message);
-      
-      // Keep existing console logs for debugging convenience
-      console.log('--- GENERATED ASSEMBLY ---');
-      console.log(assembly);
       throw err;
     }
   }
