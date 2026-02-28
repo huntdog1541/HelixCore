@@ -51,6 +51,7 @@ export class App {
   }
 
   _wireEvents() {
+    this.titlebar.on('tabchange', ({ tab }) => this.terminal.setView(tab));
     this.sidebar.on('fileselect', ({ name }) => this.editor.loadFile(name));
     this.sidebar.on('run',   () => this.runProgram());
     this.sidebar.on('clear', () => this.terminal.clear());
@@ -201,6 +202,8 @@ export class App {
       this.terminal.system(`[HelixCore] Exit: ${result.exitCode} | ${result.runtime}ms | ${result.instrCount.toLocaleString()} instructions`);
       this.terminal.updateProcessInfo(result);
       if (result.registers) this.terminal.updateRegisters(result.registers);
+      if (result.disassembly) this.terminal.updateDisassembly(result.disassembly);
+      if (result.memory) this.terminal.updateMemory(result.memory);
       this.statusbar.setLastExit(result.exitCode);
     } catch (err) {
       this.terminal.error(`[Error] ${err.message}`);

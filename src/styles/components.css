@@ -234,6 +234,73 @@
 .reg-name { color: var(--amber-dim); font-weight: 600; letter-spacing: 1px; min-width: 32px; }
 .reg-val  { color: var(--text-secondary); font-family: var(--font-mono); }
 
+#disassembly,
+#memory {
+  display: none;
+  flex: 1;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding: 6px 8px;
+}
+
+.section-title {
+  color: var(--text-muted);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+  padding: 2px 4px 6px;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 6px 4px;
+}
+
+.disasm-table,
+.mem-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.disasm-row,
+.mem-row {
+  display: grid;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 1px 4px;
+}
+
+.disasm-row {
+  grid-template-columns: 10px 128px 180px 1fr 72px;
+}
+
+.disasm-mark { color: var(--amber); }
+.disasm-va { color: var(--cyan); }
+.disasm-bytes { color: var(--text-secondary); }
+.disasm-text { color: var(--text-primary); }
+.disasm-src { color: var(--phosphor-dim); text-align: right; }
+
+.mem-block { margin-bottom: 8px; }
+.mem-title {
+  color: var(--amber-dim);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+  padding: 2px 4px 4px;
+}
+
+.mem-row {
+  grid-template-columns: 128px 1fr 120px;
+}
+
+.mem-addr { color: var(--cyan); }
+.mem-hex { color: var(--text-secondary); }
+.mem-ascii { color: var(--text-primary); }
+
 /* ─── Status Bar ─────────────────────────────────────────────────────────── */
 .status-item {
   padding: 0 10px;

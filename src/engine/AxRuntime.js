@@ -384,21 +384,107 @@ export class AxRuntime {
       }
     }
 
+    const registers = {
+      rax: r64(Register.RAX),
+      rbx: r64(Register.RBX),
+      rcx: r64(Register.RCX),
+      rdx: r64(Register.RDX),
+      rsi: r64(Register.RSI),
+      rdi: r64(Register.RDI),
+      rsp: r64(Register.RSP),
+      rbp: r64(Register.RBP),
+      rip: r64(Register.RIP),
+    };
+
     return {
       exitCode,
       runtime:    Math.round(performance.now() - t0),
       instrCount,
-      registers: {
-        rax: r64(Register.RAX),
-        rbx: r64(Register.RBX),
-        rcx: r64(Register.RCX),
-        rdx: r64(Register.RDX),
-        rsi: r64(Register.RSI),
-        rdi: r64(Register.RDI),
-        rsp: r64(Register.RSP),
-        rbp: r64(Register.RBP),
-        rip: r64(Register.RIP),
-      },
+      registers,
+      disassembly: this._buildDisassembly(elfBytes, sourceMap),
+      memory: await this._buildMemorySnapshot(ax, registers),
+    };
+  }
+
+  _buildDisassembly(elfBytes, sourceMap = []) {
+    try {
+      if (!elfBytes || elfBytes.length < 120) return [];
+
+      const view = new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength);
+      const entry = view.getBigUint64(24, true);
+      const phoff = Number(view.getBigUint64(32, true));
+      const pVaddr = view.getBigUint64(phoff + 16, true);
+      const pOffset = Number(view.getBigUint64(phoff + 8, true));
+      const pFileSz = Number(view.getBigUint64(phoff + 32, true));
+
+      const textOffset = 120;
+      const textSize = Math.max(0, Math.min(256, pFileSz - textOffset));
+      const textBytes = elfBytes.slice(textOffset, textOffset + textSize);
+      const lines = [];
+
+      const sourceByVa = new Map();
+      for (const s of sourceMap ?? []) sourceByVa.set(s.va, s);
+
+      const baseVa = pVaddr + BigInt(textOffset - pOffset);
+
+      for (let i = 0; i < textBytes.length; i += 8) {
+        const chunk = textBytes.slice(i, i + 8);
+        const va = baseVa + BigInt(i);
+        const vaHex = `0x${va.toString(16).padStart(16, '0')}`;
+        const hex = [...chunk].map(b => b.toString(16).padStart(2, '0')).join(' ');
+        const marker = va === entry ? '▶' : ' ';
+        const src = sourceByVa.get(vaHex);
+
+        lines.push({
+          va: vaHex,
+          marker,
+          bytes: hex,
+          text: 'db ' + [...chunk].map(b => `0x${b.toString(16).padStart(2, '0')}`).join(', '),
+          source: src ? `C:${src.line}:${src.col}` : '',
+        });
+      }
+
+      return lines;
+    } catch {
+      return [];
+    }
+  }
+
+  async _buildMemorySnapshot(ax, registers) {
+    const parseHex = (value) => {
+      try { return BigInt(value); } catch { return 0n; }
+    };
+
+    const dump = (base, bytes) => {
+      const rows = [];
+      for (let i = 0; i < bytes.length; i += 16) {
+        const chunk = bytes.slice(i, i + 16);
+        const addr = base + BigInt(i);
+        rows.push({
+          addr: `0x${addr.toString(16).padStart(16, '0')}`,
+          hex: [...chunk].map(b => b.toString(16).padStart(2, '0')).join(' '),
+          ascii: [...chunk].map(b => (b >= 32 && b <= 126 ? String.fromCharCode(b) : '.')).join(''),
+        });
+      }
+      return rows;
+    };
+
+    const safeRead = (addr, len) => {
+      try {
+        return ax.mem_read_bytes(addr, BigInt(len));
+      } catch {
+        return new Uint8Array(0);
+      }
+    };
+
+    const rip = parseHex(registers.rip);
+    const rsp = parseHex(registers.rsp);
+    const brk = this._brk;
+
+    return {
+      rip: dump(rip, safeRead(rip, 64)),
+      stack: dump(rsp, safeRead(rsp, 128)),
+      heap: dump(brk > 64n ? brk - 64n : this._heapStart, safeRead(brk > 64n ? brk - 64n : this._heapStart, 64)),
     };
   }
 }
