@@ -373,17 +373,32 @@ export class AxRuntime {
       return instance.commit();
       } catch (err) {
         stopReason = 'hook-error';
-        if (this._traceEnabled && trace.syscalls.length < this._traceMaxSyscalls) {
-          trace.syscalls.push({
-            idx: trace.syscalls.length,
-            rip: this._toHex(instance.reg_read_64(Register.RIP)),
-            num: -1,
-            error: err?.message ?? String(err),
-          });
+        try {
+          if (this._traceEnabled && trace.syscalls.length < this._traceMaxSyscalls) {
+            let rip = '0x0000000000000000';
+            try {
+              rip = this._toHex(instance.reg_read_64(Register.RIP));
+            } catch {
+            }
+            trace.syscalls.push({
+              idx: trace.syscalls.length,
+              rip,
+              num: -1,
+              error: err?.message ?? String(err),
+            });
+          }
+        } catch {
         }
-        rt.onStderr?.(`[AxRuntime Hook Error] ${err?.message ?? String(err)}`);
+        try {
+          rt.onStderr?.(`[AxRuntime Hook Error] ${err?.message ?? String(err)}`);
+        } catch {
+        }
         exitCode = 1;
-        return instance.stop();
+        try {
+          return instance.stop();
+        } catch {
+          return instance.commit();
+        }
       }
     });
 
