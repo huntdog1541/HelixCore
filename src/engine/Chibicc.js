@@ -328,12 +328,12 @@ export class Chibicc {
           case '-': asm += '  subq %rdi, %rax\n'; break;
           case '*': asm += '  imulq %rdi, %rax\n'; break;
           case '/': asm += '  cqo\n  idivq %rdi\n'; break;
-          case '==': asm += '  cmpq %rdi, %rax\n  sete %al\n  movzbq %al, %rax\n'; break;
-          case '!=': asm += '  cmpq %rdi, %rax\n  setne %al\n  movzbq %al, %rax\n'; break;
-          case '<':  asm += '  cmpq %rdi, %rax\n  setl %al\n  movzbq %al, %rax\n'; break;
-          case '<=': asm += '  cmpq %rdi, %rax\n  setle %al\n  movzbq %al, %rax\n'; break;
-          case '>':  asm += '  cmpq %rdi, %rax\n  setg %al\n  movzbq %al, %rax\n'; break;
-          case '>=': asm += '  cmpq %rdi, %rax\n  setge %al\n  movzbq %al, %rax\n'; break;
+          case '==': asm += '  cmpq %rdi, %rax\n  sete %al\n  movzbl %al, %eax\n'; break;
+          case '!=': asm += '  cmpq %rdi, %rax\n  setne %al\n  movzbl %al, %eax\n'; break;
+          case '<':  asm += '  cmpq %rdi, %rax\n  setl %al\n  movzbl %al, %eax\n'; break;
+          case '<=': asm += '  cmpq %rdi, %rax\n  setle %al\n  movzbl %al, %eax\n'; break;
+          case '>':  asm += '  cmpq %rdi, %rax\n  setg %al\n  movzbl %al, %eax\n'; break;
+          case '>=': asm += '  cmpq %rdi, %rax\n  setge %al\n  movzbl %al, %eax\n'; break;
         }
         asm += '  pushq %rax\n';
         break;
@@ -418,7 +418,7 @@ __printf:
   movq  %rdi, %r12
   movq  %rsi, %r13
 .L.pf_loop:
-  movzbq (%r12), %rbx
+  movzbl (%r12), %ebx
   testq  %rbx, %rbx
   jz     .L.pf_done
   cmpq   $37, %rbx
@@ -432,7 +432,7 @@ __printf:
   jmp    .L.pf_loop
 .L.pf_spec:
   incq   %r12
-  movzbq (%r12), %rbx
+  movzbl (%r12), %ebx
   incq   %r12
   cmpq   $100, %rbx
   jne    .L.pf_loop

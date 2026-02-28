@@ -75,6 +75,8 @@ npm run preview     # serve the dist/ build locally
 
 ## Running Tests
 
+### Unit Tests
+
 ```bash
 npm test
 ```
@@ -85,7 +87,7 @@ Vitest runs in watch mode by default. To run once and exit:
 npm test -- --run
 ```
 
-### Test Coverage
+#### Test Coverage
 
 | File                         | What it tests                              |
 |------------------------------|--------------------------------------------|
@@ -93,6 +95,22 @@ npm test -- --run
 
 Tests use Vitest's `vi.mock` to stub the `ax-x86` WASM module so they run
 in Node without a browser environment.
+
+### Integration & Debugging Scripts
+
+These scripts run directly with Node.js to verify the compiler and assembler logic outside of the browser environment.
+
+#### Assembler Instruction Test
+Verifies that specific x86-64 instructions are correctly handled by the `@defasm/core` assembler.
+```bash
+node test_assembler.js
+```
+
+#### Compilation Reproducer
+Compiles the `main.c` demo file to ELF and generates a `compilation.log` with detailed assembly and mapping information.
+```bash
+node repro_error.js
+```
 
 ---
 

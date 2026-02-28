@@ -19,6 +19,16 @@
 import { AssemblyState } from '@defasm/core';
 import { Chibicc }      from './Chibicc.js';
 
+// Try to import Node's fs for server-side logging
+let fs;
+try {
+  // In Node.js environment, this might work
+  const _fs = await import('fs');
+  fs = _fs.default || _fs;
+} catch (e) {
+  // In the browser, or if top-level await is not supported, fs won't be available
+}
+
 const BASE_VA   = 0x400000n;
 const ELF_HSIZ  = 64;
 const PHDR_SIZ  = 56;
@@ -65,33 +75,94 @@ export class Compiler {
    * @returns {Promise<object>} { elf: Uint8Array, sourceMap: Array }
    */
   async compileC(source) {
+    const log = (msg) => {
+      if (fs) {
+        try {
+          fs.appendFileSync('compilation.log', `[${new Date().toISOString()}] ${msg}\n`);
+        } catch (e) {
+          // Ignore log errors
+        }
+      }
+    };
+
+    log('--- NEW COMPILATION ---');
+    log('Source code provided.');
+
     // Generate x86-64 assembly using chibicc
     const { assembly, sourceMap: cSourceMap } = this._chibicc.compile(source);
     
-    // Assemble the generated assembly into an ELF
-    const { elf, state } = this.assembleGas(assembly);
+    log('Generated assembly:');
+    log(assembly);
 
-    // Now we map the C source map (asm lines) to ELF virtual addresses
-    // state.statements is an array of all assembly statements
-    const finalSourceMap = [];
-    for (const entry of cSourceMap) {
-      // Find the statement at the corresponding asmLine
-      // entry.asmLine is a 1-based index in the assembly string
-      const stmt = state.statements[entry.asmLine - 1];
-      if (stmt) {
-        // Find virtual address of this statement
-        // textVA is BASE_VA + HEADER_SZ
-        const textVA = BASE_VA + BigInt(HEADER_SZ);
-        const va = textVA + BigInt(stmt.address);
-        finalSourceMap.push({
-          va: '0x' + va.toString(16).padStart(16, '0'),
-          line: entry.srcLine,
-          col: entry.srcCol
-        });
+    // Assemble the generated assembly into an ELF
+    try {
+      const { elf, state } = this.assembleGas(assembly);
+
+      log('Assembly successful. ELF generated.');
+      if (state && state.statements) {
+        log(`Number of statements: ${state.statements.length}`);
       }
+
+      // Now we map the C source map (asm lines) to ELF virtual addresses
+      // state.statements is an array of all assembly statements
+      const finalSourceMap = [];
+      const asmStrings = assembly.split('\n');
+      
+      // We'll create a mapping from line index in assembly (0-based) 
+      // to index in state.statements.
+      const lineToStmtIdx = new Array(asmStrings.length).fill(-1);
+      let stmtIdx = 0;
+      for (let i = 0; i < asmStrings.length; i++) {
+        const line = asmStrings[i].trim();
+        // Basic heuristic: if it's not a directive, label or empty, it's a statement
+        if (line && !line.startsWith('.') && !line.endsWith(':')) {
+           lineToStmtIdx[i] = stmtIdx++;
+        }
+      }
+      
+      log(`Heuristic statement count: ${stmtIdx}`);
+
+      if (state && state.statements) {
+        for (const entry of cSourceMap) {
+          // Find the statement at the corresponding asmLine
+          // entry.asmLine is a 1-based index in the assembly string
+          let asmIdx = entry.asmLine - 1;
+          
+          // If the exact line isn't a statement, look forward for the next one
+          while (asmIdx < asmStrings.length && lineToStmtIdx[asmIdx] === -1) {
+            asmIdx++;
+          }
+
+          if (asmIdx < asmStrings.length) {
+            const sIdx = lineToStmtIdx[asmIdx];
+            if (sIdx !== -1 && sIdx < state.statements.length) {
+              const stmt = state.statements[sIdx];
+              if (stmt) {
+                // Find virtual address of this statement
+                // textVA is BASE_VA + HEADER_SZ
+                const textVA = BASE_VA + BigInt(HEADER_SZ);
+                const va = textVA + BigInt(stmt.address);
+                finalSourceMap.push({
+                  va: '0x' + va.toString(16).padStart(16, '0'),
+                  line: entry.srcLine,
+                  col: entry.srcCol
+                });
+              }
+            }
+          }
+        }
+      }
+      
+      return { elf, sourceMap: finalSourceMap };
+    } catch (err) {
+      log('Compilation failed with error:');
+      log(err.stack || err.message);
+      
+      // Keep existing console logs for debugging convenience
+      console.log('--- GENERATED ASSEMBLY ---');
+      console.log(assembly);
+      throw err;
     }
-    
-    return { elf, sourceMap: finalSourceMap };
   }
 
   /* ── ELF builder ─────────────────────────────────────────────────────── */
