@@ -113,6 +113,7 @@ export class AxRuntime {
 
     // Intercept every `syscall` instruction before it executes
     ax.hook_before_mnemonic(Mnemonic.Syscall, (instance) => {
+      try {
       const num = instance.reg_read_64(Register.RAX);
       if (rt._traceEnabled && trace.syscalls.length < rt._traceMaxSyscalls) {
         trace.syscalls.push({
@@ -370,6 +371,20 @@ export class AxRuntime {
       // ── unknown syscall → ENOSYS ──────────────────────────────────────
       instance.reg_write_64(Register.RAX, BigInt.asUintN(64, -38n));
       return instance.commit();
+      } catch (err) {
+        stopReason = 'hook-error';
+        if (this._traceEnabled && trace.syscalls.length < this._traceMaxSyscalls) {
+          trace.syscalls.push({
+            idx: trace.syscalls.length,
+            rip: this._toHex(instance.reg_read_64(Register.RIP)),
+            num: -1,
+            error: err?.message ?? String(err),
+          });
+        }
+        rt.onStderr?.(`[AxRuntime Hook Error] ${err?.message ?? String(err)}`);
+        exitCode = 1;
+        return instance.stop();
+      }
     });
 
     let instrCount = 0;
