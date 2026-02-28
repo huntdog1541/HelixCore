@@ -397,10 +397,10 @@ export class AxRuntime {
             rax: this._toHex(ax.reg_read_64(Register.RAX)),
           });
         }
-        const stopped = await ax.step();
+        const keepRunning = await ax.step();
         instrCount++;
-        if (stopped) {
-          if (stopReason === 'unknown') stopReason = 'step-returned-stopped';
+        if (!keepRunning) {
+          if (stopReason === 'unknown') stopReason = 'step-returned-stop';
           break;
         }
       }
