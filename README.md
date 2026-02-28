@@ -62,6 +62,37 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 > `Cross-Origin-Embedder-Policy: require-corp` headers automatically (required
 > by the ax-x86 WASM module). These headers are configured in `vite.config.js`.
 
+### Dev Diagnostics (Execution Logging)
+
+In `dev` mode, HelixCore can emit execution diagnostics from `App.runProgram()`.
+
+Captured fields include:
+- User IP address (best effort)
+- Timestamp
+- Command run
+- Code being run
+- Pre-run snapshot (language, file, command, engine state)
+- Final result (or error)
+
+Diagnostics are always logged to the browser console in dev mode under:
+`[HelixCore:diagnostics]`
+
+To also send diagnostics to your backend, set Vite env vars:
+
+```bash
+VITE_DIAGNOSTICS_ENDPOINT=https://your-api.example.com/helix/diagnostics
+VITE_DIAGNOSTICS_IP_ENDPOINT=https://your-ip-service.example.com/ip
+```
+
+`VITE_DIAGNOSTICS_IP_ENDPOINT` should return JSON like:
+
+```json
+{ "ip": "203.0.113.10" }
+```
+
+If no IP endpoint is configured, diagnostics still work and log:
+`userIpAddress: "unavailable (set VITE_DIAGNOSTICS_IP_ENDPOINT)"`.
+
 ---
 
 ## Building for Production

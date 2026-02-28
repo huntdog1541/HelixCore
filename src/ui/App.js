@@ -12,6 +12,7 @@ import { Terminal }    from '../terminal/Terminal.js';
 import { Titlebar }    from './Titlebar.js';
 import { Sidebar }     from './Sidebar.js';
 import { StatusBar }   from './StatusBar.js';
+import { Diagnostics } from '../utils/Diagnostics.js';
 
 export class App {
   constructor(rootEl) {
@@ -19,6 +20,7 @@ export class App {
     this.engine   = new AxRuntime();
     this.compiler = new Compiler();
     this.vfs      = new VirtualFS();
+    this.diag     = new Diagnostics();
     this._running = false;
   }
 
@@ -161,7 +163,17 @@ export class App {
       sh:  `sh ./${file}`,
       elf: `ax ./${file}`,
     };
-    this.terminal.cmd(cmdMap[lang] ?? `ax ./${file}`);
+    const command = cmdMap[lang] ?? `ax ./${file}`;
+    const preRunSnapshot = {
+      language: lang,
+      file,
+      command,
+      code,
+      codeLength: code.length,
+      engineInitialized: Boolean(this.engine?._initialized),
+      activeView: this.terminal?._activeView ?? 'editor',
+    };
+    this.terminal.cmd(command);
 
     try {
       let elfBytes = null;
@@ -205,9 +217,36 @@ export class App {
       if (result.disassembly) this.terminal.updateDisassembly(result.disassembly);
       if (result.memory) this.terminal.updateMemory(result.memory);
       this.statusbar.setLastExit(result.exitCode);
+
+      await this.diag.logExecution({
+        commandRan: command,
+        preRun: preRunSnapshot,
+        result: {
+          exitCode: result.exitCode,
+          runtime: result.runtime,
+          instrCount: result.instrCount,
+          registers: result.registers,
+          disassemblyPreview: (result.disassembly ?? []).slice(0, 8),
+          memoryPreview: {
+            rip: (result.memory?.rip ?? []).slice(0, 4),
+            stack: (result.memory?.stack ?? []).slice(0, 4),
+            heap: (result.memory?.heap ?? []).slice(0, 4),
+          },
+        },
+      });
     } catch (err) {
       this.terminal.error(`[Error] ${err.message}`);
       this.statusbar.setLastExit(1);
+
+      await this.diag.logExecution({
+        commandRan: command,
+        preRun: preRunSnapshot,
+        result: null,
+        error: {
+          message: err?.message ?? String(err),
+          stack: err?.stack ?? null,
+        },
+      });
     }
 
     this._running = false;
