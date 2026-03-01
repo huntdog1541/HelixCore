@@ -126,6 +126,18 @@ export class AxRuntime {
         });
       }
 
+      // ── HelixCore printf (custom syscall) ─────────────────────────────
+      // rdi = fmt (null-terminated), rsi = int arg (optional)
+      if (num === 1000n) {
+        const fmtPtr = instance.reg_read_64(Register.RDI);
+        const argVal = BigInt.asIntN(64, instance.reg_read_64(Register.RSI));
+        const fmt = rt._readCString(instance, fmtPtr);
+        const out = rt._formatPrintf(fmt, argVal);
+        rt._appendOutput(1n, out);
+        instance.reg_write_64(Register.RAX, BigInt(out.length));
+        return instance.commit();
+      }
+
       // ── read(fd, buf, len) ─────────────────────────────────────────────
       if (num === 0n) {
         const fd  = Number(instance.reg_read_64(Register.RDI));
@@ -498,6 +510,50 @@ export class AxRuntime {
     } catch {
       return '0x0000000000000000';
     }
+  }
+
+  _readCString(instance, addr, maxLen = 4096) {
+    try {
+      let s = '';
+      let p = addr;
+      for (let i = 0; i < maxLen; i++) {
+        const b = instance.mem_read_bytes(p, 1n)[0];
+        if (b === 0) break;
+        s += String.fromCharCode(b);
+        p += 1n;
+      }
+      return s;
+    } catch {
+      return '';
+    }
+  }
+
+  _formatPrintf(fmt, intArg) {
+    if (!fmt) return '';
+    const val = Number(intArg);
+    // Minimal formatter: supports %d and %% only.
+    let out = '';
+    for (let i = 0; i < fmt.length; i++) {
+      const ch = fmt[i];
+      if (ch !== '%') {
+        out += ch;
+        continue;
+      }
+      const next = fmt[i + 1] ?? '';
+      if (next === '%') {
+        out += '%';
+        i++;
+        continue;
+      }
+      if (next === 'd') {
+        out += String(val);
+        i++;
+        continue;
+      }
+      // Unknown specifier: emit as-is
+      out += ch;
+    }
+    return out;
   }
 
   _buildDisassembly(elfBytes, sourceMap = []) {

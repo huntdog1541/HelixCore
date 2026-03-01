@@ -328,12 +328,72 @@ export class Chibicc {
           case '-': asm += '  subq %rdi, %rax\n'; break;
           case '*': asm += '  imulq %rdi, %rax\n'; break;
           case '/': asm += '  cqo\n  idivq %rdi\n'; break;
-          case '==': asm += '  cmpq %rdi, %rax\n  sete %al\n  movzbl %al, %eax\n'; break;
-          case '!=': asm += '  cmpq %rdi, %rax\n  setne %al\n  movzbl %al, %eax\n'; break;
-          case '<':  asm += '  cmpq %rdi, %rax\n  setl %al\n  movzbl %al, %eax\n'; break;
-          case '<=': asm += '  cmpq %rdi, %rax\n  setle %al\n  movzbl %al, %eax\n'; break;
-          case '>':  asm += '  cmpq %rdi, %rax\n  setg %al\n  movzbl %al, %eax\n'; break;
-          case '>=': asm += '  cmpq %rdi, %rax\n  setge %al\n  movzbl %al, %eax\n'; break;
+          case '==': {
+            const cid = this.labelId++;
+            asm += '  cmpq %rdi, %rax\n';
+            asm += `  je .L.cmp.true.${cid}\n`;
+            asm += '  movq $0, %rax\n';
+            asm += `  jmp .L.cmp.end.${cid}\n`;
+            asm += `.L.cmp.true.${cid}:\n`;
+            asm += '  movq $1, %rax\n';
+            asm += `.L.cmp.end.${cid}:\n`;
+            break;
+          }
+          case '!=': {
+            const cid = this.labelId++;
+            asm += '  cmpq %rdi, %rax\n';
+            asm += `  jne .L.cmp.true.${cid}\n`;
+            asm += '  movq $0, %rax\n';
+            asm += `  jmp .L.cmp.end.${cid}\n`;
+            asm += `.L.cmp.true.${cid}:\n`;
+            asm += '  movq $1, %rax\n';
+            asm += `.L.cmp.end.${cid}:\n`;
+            break;
+          }
+          case '<': {
+            const cid = this.labelId++;
+            asm += '  cmpq %rdi, %rax\n';
+            asm += `  jl .L.cmp.true.${cid}\n`;
+            asm += '  movq $0, %rax\n';
+            asm += `  jmp .L.cmp.end.${cid}\n`;
+            asm += `.L.cmp.true.${cid}:\n`;
+            asm += '  movq $1, %rax\n';
+            asm += `.L.cmp.end.${cid}:\n`;
+            break;
+          }
+          case '<=': {
+            const cid = this.labelId++;
+            asm += '  cmpq %rdi, %rax\n';
+            asm += `  jle .L.cmp.true.${cid}\n`;
+            asm += '  movq $0, %rax\n';
+            asm += `  jmp .L.cmp.end.${cid}\n`;
+            asm += `.L.cmp.true.${cid}:\n`;
+            asm += '  movq $1, %rax\n';
+            asm += `.L.cmp.end.${cid}:\n`;
+            break;
+          }
+          case '>': {
+            const cid = this.labelId++;
+            asm += '  cmpq %rdi, %rax\n';
+            asm += `  jg .L.cmp.true.${cid}\n`;
+            asm += '  movq $0, %rax\n';
+            asm += `  jmp .L.cmp.end.${cid}\n`;
+            asm += `.L.cmp.true.${cid}:\n`;
+            asm += '  movq $1, %rax\n';
+            asm += `.L.cmp.end.${cid}:\n`;
+            break;
+          }
+          case '>=': {
+            const cid = this.labelId++;
+            asm += '  cmpq %rdi, %rax\n';
+            asm += `  jge .L.cmp.true.${cid}\n`;
+            asm += '  movq $0, %rax\n';
+            asm += `  jmp .L.cmp.end.${cid}\n`;
+            asm += `.L.cmp.true.${cid}:\n`;
+            asm += '  movq $1, %rax\n';
+            asm += `.L.cmp.end.${cid}:\n`;
+            break;
+          }
         }
         asm += '  pushq %rax\n';
         break;
@@ -409,73 +469,9 @@ export class Chibicc {
   _printfStub() {
     return `
 __printf:
-  pushq %rbp
-  movq  %rsp, %rbp
-  pushq %rbx
-  pushq %r12
-  pushq %r13
-  subq  $32, %rsp
-  movq  %rdi, %r12
-  movq  %rsi, %r13
-.L.pf_loop:
-  movzbl (%r12), %ebx
-  testq  %rbx, %rbx
-  jz     .L.pf_done
-  cmpq   $37, %rbx
-  je     .L.pf_spec
-  movq   $1,   %rax
-  movq   $1,   %rdi
-  movq   %r12, %rsi
-  movq   $1,   %rdx
+  movq $1000, %rax
   syscall
-  incq   %r12
-  jmp    .L.pf_loop
-.L.pf_spec:
-  incq   %r12
-  movzbl (%r12), %ebx
-  incq   %r12
-  cmpq   $100, %rbx
-  jne    .L.pf_loop
-  movq   %r13, %rax
-  testq  %rax, %rax
-  jns    .L.pf_pos
-  subq   $8,  %rsp
-  movb   $45, (%rsp)
-  movq   $1,  %rax
-  movq   $1,  %rdi
-  movq   %rsp, %rsi
-  movq   $1,  %rdx
-  syscall
-  addq   $8,  %rsp
-  movq   %r13, %rax
-  negq   %rax
-.L.pf_pos:
-  leaq   -25(%rbp), %rcx
-.L.pf_dloop:
-  xorq   %rdx, %rdx
-  movq   $10,  %rbx
-  divq   %rbx
-  addq   $48,  %rdx
-  movb   %dl,  (%rcx)
-  decq   %rcx
-  testq  %rax, %rax
-  jnz    .L.pf_dloop
-  incq   %rcx
-  leaq   -24(%rbp), %rdx
-  subq   %rcx, %rdx
-  movq   $1,   %rax
-  movq   $1,   %rdi
-  movq   %rcx, %rsi
-  syscall
-  jmp    .L.pf_loop
-.L.pf_done:
-  addq   $32, %rsp
-  popq   %r13
-  popq   %r12
-  popq   %rbx
-  movq   %rbp, %rsp
-  popq   %rbp
-  xorq   %rax, %rax
+  xorq %rax, %rax
   ret
 `;
   }
