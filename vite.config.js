@@ -12,6 +12,13 @@ export default defineConfig({
             'Access-Control-Allow-Headers': 'Content-Type',
         },
     },
+    preview: {
+        headers: {
+            // Required for SharedArrayBuffer (used by some WASM builds)
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+        },
+    },
     optimizeDeps: {
         exclude: ['ax-x86'],
     },
